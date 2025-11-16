@@ -131,7 +131,7 @@ const searchKeyword = ref('');
 const loading = ref(false);
 const submitting = ref(false);
 const isAdmin = ref(false);
-const activeKeys = ref(['system', 'user']);
+const activeKeys = ref(['user']); // 默认只展开用户环境变量
 
 // 对话框相关
 const showDialog = ref(false);
@@ -184,9 +184,16 @@ async function loadEnvVars() {
 function checkAdminPrivileges() {
   try {
     isAdmin.value = window.services.checkAdminPrivileges();
+    // 根据管理员权限设置默认展开的面板
+    if (isAdmin.value) {
+      activeKeys.value = ['system', 'user']; // 有管理员权限时展开所有
+    } else {
+      activeKeys.value = ['user']; // 无管理员权限时只展开用户变量
+    }
   } catch (error) {
     console.error('检查管理员权限失败:', error);
     isAdmin.value = false;
+    activeKeys.value = ['user'];
   }
 }
 
