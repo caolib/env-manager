@@ -7,6 +7,9 @@
           <ReloadOutlined />
           刷新
         </a-button>
+        <a-button @click="checkAllPaths" size="small" :loading="pathChecking">
+          路径检测
+        </a-button>
         <a-tooltip v-if="!isAdmin" placement="bottom">
           <template #title>
             <div style="max-width: 280px;">
@@ -133,6 +136,7 @@ const loading = ref(false);
 const submitting = ref(false);
 const isAdmin = ref(false);
 const activeKeys = ref(['user']); // 默认只展开用户环境变量
+const pathChecking = ref(false);
 
 // 对话框相关
 const showDialog = ref(false);
@@ -301,12 +305,20 @@ function showAddUserDialog() {
 }
 
 // 编辑变量
-function editVar(row, scope) {
-  formData.value = { ...row, scope };
-  kvInput.value = `${row.name}=${row.value}`;
-  originalVarName.value = row.name;
-  editMode.value = true;
-  showDialog.value = true;
+async function editVar(row, scope) {
+  // 直接保存,不弹出对话框
+  try {
+    await window.services.setEnvVar(
+      row.name,
+      row.value,
+      scope === 'system'
+    );
+    message.success(`变量 "${row.name}" 更新成功`);
+    await loadEnvVars();
+  } catch (error) {
+    message.error(`更新失败: ${error.message}`);
+    console.error('Error saving env var:', error);
+  }
 }
 
 // 取消编辑
@@ -404,6 +416,101 @@ async function deleteVar(row, scope) {
 }
 
 
+
+// 全局路径检测
+async function checkAllPaths() {
+  pathChecking.value = true;
+
+  try {
+    const allVars = [...systemVars.value, ...userVars.value];
+    let totalPaths = 0;
+    let existCount = 0;
+    let notExistCount = 0;
+    const notExistDetails = [];
+
+    for (const envVar of allVars) {
+      const value = envVar.value?.trim();
+      if (!value) continue;
+
+      // 检查是否为分号分隔的路径列表
+      if (value.includes(';') && value.split(';').filter(Boolean).length > 1) {
+        const paths = value.split(';').filter(Boolean);
+        for (const path of paths) {
+          if (window.services?.isPathLike(path)) {
+            // 检查是否为目录(不是文件)
+            const dirStatus = window.services?.isDirectory ? window.services.isDirectory(path) : null;
+            if (dirStatus === false) continue; // 跳过文件
+
+            totalPaths++;
+            const exists = window.services.checkPathExists(path);
+            // 清理 file: 前缀用于显示
+            const cleanPath = path.replace(/^file:/, '');
+            if (exists) {
+              existCount++;
+            } else {
+              notExistCount++;
+              notExistDetails.push({
+                varName: envVar.name,
+                path: cleanPath
+              });
+            }
+          }
+        }
+      } else if (window.services?.isPathLike(value)) {
+        // 检查是否为目录(不是文件)
+        const dirStatus = window.services?.isDirectory ? window.services.isDirectory(value) : null;
+        if (dirStatus === false) continue; // 跳过文件
+
+        // 单个路径值(且是目录)
+        totalPaths++;
+        const exists = window.services.checkPathExists(value);
+        // 清理 file: 前缀用于显示
+        const cleanPath = value.replace(/^file:/, '');
+        if (exists) {
+          existCount++;
+        } else {
+          notExistCount++;
+          notExistDetails.push({
+            varName: envVar.name,
+            path: cleanPath
+          });
+        }
+      }
+    }
+
+    // 显示检测结果
+    const { h } = await import('vue');
+    Modal.info({
+      title: '全局路径检测结果',
+      width: 700,
+      content: h('div', {}, [
+        h('div', { style: { marginBottom: '16px' } }, [
+          h('p', { style: { marginBottom: '8px' } }, `检测到 ${totalPaths} 个路径`),
+          h('p', { style: { marginBottom: '8px', color: '#52c41a', fontWeight: 'bold' } }, `✓ 存在: ${existCount} 个`),
+          h('p', { style: { marginBottom: '8px', color: '#ff4d4f', fontWeight: 'bold' } }, `✗ 不存在: ${notExistCount} 个`)
+        ]),
+        notExistDetails.length > 0 ? h('div', { style: { marginTop: '16px' } }, [
+          h('h4', { style: { marginBottom: '8px' } }, '不存在的路径详情:'),
+          h('div', { style: { maxHeight: '400px', overflowY: 'auto' } },
+            notExistDetails.map(item =>
+              h('div', { style: { marginBottom: '12px', padding: '8px', backgroundColor: '#fafafa', borderRadius: '4px' } }, [
+                h('div', { style: { fontSize: '12px', color: '#666', marginBottom: '4px' } }, `变量: ${item.varName}`),
+                h('div', { style: { fontSize: '12px', wordBreak: 'break-all' } }, item.path)
+              ])
+            )
+          )
+        ]) : h('div', { style: { marginTop: '16px', padding: '12px', backgroundColor: '#f6ffed', borderRadius: '4px', color: '#52c41a' } },
+          '🎉 所有路径都存在！'
+        )
+      ])
+    });
+  } catch (error) {
+    message.error(`路径检测失败: ${error.message}`);
+    console.error('Error checking paths:', error);
+  } finally {
+    pathChecking.value = false;
+  }
+}
 
 // 配置子输入框的函数
 function setupSubInput() {

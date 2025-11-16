@@ -38,6 +38,10 @@
                     <ul class="path-list">
                         <li v-for="(item, idx) in pathList" :key="idx" class="path-item">
                             <span v-html="renderPathItem(item)"></span>
+                            <span v-if="pathCheckResults[item] === false" class="path-status path-not-exist"
+                                title="路径不存在">✗</span>
+                            <span v-else-if="pathCheckResults[item] === true" class="path-status path-exist"
+                                title="路径存在">✓</span>
                         </li>
                     </ul>
                 </div>
@@ -46,6 +50,7 @@
                         <a-space>
                             <a-button size="small" type="primary" @click="savePath">保存</a-button>
                             <a-button size="small" @click="cancelEditPath">取消</a-button>
+                            <a-button size="small" @click="removeDuplicates">去重</a-button>
                             <a-button size="small" @click="addPath">
                                 <PlusOutlined />
                                 添加路径
@@ -66,8 +71,14 @@
             </template>
             <!-- 普通变量显示 -->
             <template v-else>
-                <div class="normal-value clickable" v-html="renderValue(envVar.value)" @click="copyValue"
-                    title="点击复制变量值"></div>
+                <div class="normal-value-wrapper">
+                    <div class="normal-value clickable" v-html="renderValue(envVar.value)" @click="copyValue"
+                        title="点击复制变量值"></div>
+                    <span v-if="normalPathCheckResult === false" class="path-status path-not-exist"
+                        title="路径不存在">✗</span>
+                    <span v-else-if="normalPathCheckResult === true" class="path-status path-exist"
+                        title="路径存在">✓</span>
+                </div>
             </template>
         </div>
     </a-card>
@@ -161,6 +172,10 @@ const editingPath = ref(false);
 const editList = ref([]);
 const isDirty = ref(false);
 
+// 路径检测结果缓存
+const pathCheckResults = ref({});
+const normalPathCheckResult = ref(null);
+
 // 处理编辑按钮点击
 const handleEditClick = () => {
     if (isSemicolonSeparatedValue.value) {
@@ -215,6 +230,7 @@ function addPath() {
     isDirty.value = true;
 }
 
+// 保存并显示 diff 确认
 async function savePath() {
     const oldPaths = pathList.value;
     const newPaths = editList.value.filter(Boolean);
@@ -224,12 +240,13 @@ async function savePath() {
     const added = newPaths.filter(p => !oldPaths.includes(p));
     const unchanged = newPaths.filter(p => oldPaths.includes(p));
 
-    // 显示对比
+    // 显示对比并确认
     Modal.confirm({
         title: '确认保存修改',
-        width: '95vw',
-        style: { top: '20px' },
-        bodyStyle: { height: 'calc(90vh - 110px)', overflowY: 'auto' },
+        width: '100%',
+        wrapClassName: 'full-screen-modal',
+        style: { top: 0, paddingBottom: 0, maxWidth: '100%' },
+        bodyStyle: { height: 'calc(100vh - 110px)', overflowY: 'auto' },
         content: h('div', { style: { height: '100%' } }, [
             h('div', { style: { display: 'flex', gap: '20px', height: '100%' } }, [
                 // 修改前
@@ -333,6 +350,126 @@ watch(editList, (newVal) => {
     if (!editingPath.value) return;
     isDirty.value = newVal.join(';') !== pathList.value.join(';');
 }, { deep: true });
+
+// 判断是否可以检测路径
+const canCheckPath = computed(() => {
+    if (isSemicolonSeparatedValue.value) {
+        // Path 变量,检查是否有路径格式的项
+        return pathList.value.some(item => window.services?.isPathLike(item));
+    } else {
+        // 普通变量,检查是否为路径格式
+        const value = props.envVar.value?.trim();
+        return value && window.services?.isPathLike(value);
+    }
+});
+
+// 检查路径
+function checkPaths() {
+    if (isSemicolonSeparatedValue.value) {
+        // 检测 Path 变量
+        const results = {};
+        let existCount = 0;
+        let notExistCount = 0;
+        let notPathCount = 0;
+        const notExistPaths = [];
+
+        for (const item of pathList.value) {
+            if (window.services?.isPathLike(item)) {
+                const exists = window.services.checkPathExists(item);
+                results[item] = exists;
+                if (exists) {
+                    existCount++;
+                } else {
+                    notExistCount++;
+                    notExistPaths.push(item);
+                }
+            } else {
+                notPathCount++;
+            }
+        }
+
+        pathCheckResults.value = results;
+
+        // 显示结果
+        Modal.info({
+            title: '路径检测结果',
+            width: 600,
+            content: h('div', {}, [
+                h('p', { style: { marginBottom: '8px' } }, `变量名: ${props.envVar.name}`),
+                h('p', { style: { marginBottom: '8px' } }, `总计: ${pathList.value.length} 项`),
+                h('p', { style: { marginBottom: '8px', color: '#52c41a' } }, `✓ 存在: ${existCount} 项`),
+                h('p', { style: { marginBottom: '8px', color: '#ff4d4f' } }, `✗ 不存在: ${notExistCount} 项`),
+                notPathCount > 0 ? h('p', { style: { marginBottom: '8px', color: '#999' } }, `非路径格式: ${notPathCount} 项`) : null,
+                notExistPaths.length > 0 ? h('div', { style: { marginTop: '16px' } }, [
+                    h('h4', { style: { marginBottom: '8px' } }, '不存在的路径:'),
+                    h('ul', { style: { margin: 0, paddingLeft: '20px', maxHeight: '200px', overflowY: 'auto' } },
+                        notExistPaths.map(p => h('li', { style: { marginBottom: '4px', fontSize: '12px', wordBreak: 'break-all' } }, p))
+                    )
+                ]) : null
+            ])
+        });
+    } else {
+        // 检测普通变量
+        const value = props.envVar.value?.trim();
+        if (value && window.services?.isPathLike(value)) {
+            const exists = window.services.checkPathExists(value);
+            normalPathCheckResult.value = exists;
+
+            Modal.info({
+                title: '路径检测结果',
+                width: 600,
+                content: h('div', {}, [
+                    h('p', { style: { marginBottom: '8px' } }, `变量名: ${props.envVar.name}`),
+                    h('p', { style: { marginBottom: '8px' } }, `路径: ${value}`),
+                    h('p', {
+                        style: {
+                            marginBottom: '8px',
+                            color: exists ? '#52c41a' : '#ff4d4f',
+                            fontWeight: 'bold'
+                        }
+                    }, exists ? '✓ 路径存在' : '✗ 路径不存在')
+                ])
+            });
+        }
+    }
+}
+
+// 检查路径状态(仅用于内部逻辑)
+function checkPathStatus(pathStr) {
+    if (!window.services?.isPathLike(pathStr)) {
+        return null; // 不是路径格式
+    }
+    return window.services.checkPathExists(pathStr);
+}
+
+// 普通变量的路径状态(已废弃,保留用于兼容)
+const normalPathStatus = computed(() => {
+    return normalPathCheckResult.value;
+});
+
+// Path 去重
+function removeDuplicates() {
+    const seen = new Set();
+    const unique = [];
+
+    for (const item of editList.value) {
+        const normalized = item.trim().toLowerCase();
+        if (normalized && !seen.has(normalized)) {
+            seen.add(normalized);
+            unique.push(item.trim());
+        }
+    }
+
+    const removedCount = editList.value.length - unique.length;
+    editList.value = unique;
+
+    if (removedCount > 0) {
+        message.success(`已去除 ${removedCount} 个重复项`);
+        isDirty.value = true;
+    } else {
+        message.info('没有发现重复项');
+    }
+}
 </script>
 
 <style scoped>
@@ -409,6 +546,29 @@ watch(editList, (newVal) => {
     padding: 2px 0;
     font-size: 12px;
     line-height: 1.5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.path-status {
+    font-size: 14px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.path-exist {
+    color: #52c41a;
+}
+
+.path-not-exist {
+    color: #ff4d4f;
+}
+
+.normal-value-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .path-edit-container {
@@ -435,5 +595,26 @@ watch(editList, (newVal) => {
 
 .path-edit-item :deep(.ant-input) {
     flex: 1;
+}
+</style>
+
+<!-- 全屏模态框样式 -->
+<style>
+.full-screen-modal .ant-modal {
+    max-width: 100%;
+    top: 0;
+    padding-bottom: 0;
+    margin: 0;
+}
+
+.full-screen-modal .ant-modal-content {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.full-screen-modal .ant-modal-body {
+    flex: 1;
+    overflow-y: auto;
 }
 </style>

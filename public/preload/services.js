@@ -286,5 +286,54 @@ window.services = {
     } catch (error) {
       return { success: false, message: error.message }
     }
+  },
+
+  /**
+   * 检查路径是否存在(只检查目录,不检查文件)
+   */
+  checkPathExists: function (pathStr) {
+    try {
+      // 去除 file: 前缀
+      const cleanPath = pathStr.replace(/^file:/, '')
+
+      // 检查路径是否存在
+      if (!fs.existsSync(cleanPath)) {
+        return false
+      }
+
+      // 只返回 true 如果是目录
+      const stat = fs.statSync(cleanPath)
+      return stat.isDirectory()
+    } catch (error) {
+      return false
+    }
+  },
+
+  /**
+   * 判断路径是否为目录(不是文件)
+   * 返回 null 表示路径不存在,false 表示是文件,true 表示是目录
+   */
+  isDirectory: function (pathStr) {
+    try {
+      const cleanPath = pathStr.replace(/^file:/, '')
+      if (!fs.existsSync(cleanPath)) {
+        return null // 路径不存在
+      }
+      const stat = fs.statSync(cleanPath)
+      return stat.isDirectory()
+    } catch (error) {
+      return null
+    }
+  },
+
+  /**
+   * 判断字符串是否为路径格式
+   */
+  isPathLike: function (str) {
+    if (!str || typeof str !== 'string') return false
+    // 去除 file: 前缀
+    const cleanStr = str.replace(/^file:/, '')
+    // Windows路径模式: C:\... 或 \\... 或包含 \ 或 /
+    return /^[a-zA-Z]:[\\|/]/.test(cleanStr) || /^\\\\/.test(cleanStr) || cleanStr.includes('\\') || (cleanStr.includes('/') && !cleanStr.includes('://'))
   }
 }
