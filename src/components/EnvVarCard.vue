@@ -103,7 +103,7 @@ function highlightHtml(text, keyword) {
     while ((i = srcLower.indexOf(kLower, from)) !== -1) {
         out += escapeHtml(src.slice(from, i));
         const match = src.slice(i, i + k.length);
-        out += `<mark style="background-color: var(--ant-color-warning-bg); color: var(--ant-color-warning-text-active); padding: 0 2px; border-radius: 2px; font-weight: 500;">${escapeHtml(match)}</mark>`;
+        out += `<mark style="background-color: yellow; color: red; padding: 0; ">${escapeHtml(match)}</mark>`;
         from = i + k.length;
     }
     out += escapeHtml(src.slice(from));
@@ -261,11 +261,18 @@ watch(editList, (newVal) => {
 
 .clickable {
     cursor: pointer;
-    transition: opacity 0.2s;
+    transition: all 0.2s;
+    user-select: none;
 }
 
 .clickable:hover {
     opacity: 0.7;
+    background-color: rgba(0, 0, 0, 0.02);
+    border-radius: 2px;
+}
+
+.clickable:active {
+    opacity: 0.5;
 }
 
 .card-actions {
