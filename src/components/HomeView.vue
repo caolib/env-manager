@@ -83,7 +83,7 @@
       :confirmLoading="submitting" width="600px">
       <a-form :model="formData" layout="vertical">
         <!-- KV 格式快捷输入 -->
-        <a-form-item label="快捷输入 (KEY=VALUE)">
+        <a-form-item label="输入键值对 (key=value)">
           <a-input v-model:value="kvInput" placeholder="例如: MY_VAR=value" @input="parseKVInput" />
         </a-form-item>
 

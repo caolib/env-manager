@@ -2,8 +2,12 @@
     <a-card size="small" class="env-var-card">
         <template #title>
             <div class="card-header">
-                <span class="var-name" v-html="renderName(envVar.name)"></span>
+                <span class="var-name clickable" v-html="renderName(envVar.name)" @click="copyKey"
+                    title="点击复制变量名"></span>
                 <div class="card-actions">
+                    <a-button size="small" type="link" @click="copyAll" title="复制 KEY=VALUE">
+                        <CopyOutlined />
+                    </a-button>
                     <a-tooltip v-if="isReadonly" title="需要管理员权限才能编辑系统环境变量">
                         <a-button size="small" type="link" :disabled="isReadonly">
                             <EditOutlined />
@@ -51,7 +55,8 @@
                     <a-alert v-if="isDirty" message="有未保存的更改" type="warning" show-icon style="margin: 8px 0;" />
                     <div class="path-edit-list">
                         <div v-for="(item, index) in editList" :key="index" class="path-edit-item">
-                            <a-input v-model:value="editList[index]" placeholder="输入路径..." size="small" />
+                            <a-input v-model:value="editList[index]" style="width: 800px" placeholder="输入路径..."
+                                size="small" />
                             <a-button size="small" type="link" danger @click="removePathItem(index)">
                                 <DeleteOutlined />
                             </a-button>
@@ -61,15 +66,17 @@
             </template>
             <!-- 普通变量显示 -->
             <template v-else>
-                <div class="normal-value" v-html="renderValue(envVar.value)"></div>
+                <div class="normal-value clickable" v-html="renderValue(envVar.value)" @click="copyValue"
+                    title="点击复制变量值"></div>
             </template>
         </div>
     </a-card>
 </template>
 
 <script setup>
-import { EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue';
+import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined } from '@ant-design/icons-vue';
 import { computed, ref, watch } from 'vue';
+import { message } from 'ant-design-vue';
 
 // 工具函数：HTML 转义
 function escapeHtml(str) {
@@ -162,6 +169,34 @@ const handleEditClick = () => {
     }
 };
 
+// 复制完整的 KEY=VALUE
+const copyAll = () => {
+    const textToCopy = `${props.envVar.name}=${props.envVar.value}`;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        message.success('已复制键值对到剪贴板');
+    }).catch(() => {
+        message.error('复制失败');
+    });
+};
+
+// 复制变量名
+const copyKey = () => {
+    navigator.clipboard.writeText(props.envVar.name).then(() => {
+        message.success('已复制变量名到剪贴板');
+    }).catch(() => {
+        message.error('复制失败');
+    });
+};
+
+// 复制变量值
+const copyValue = () => {
+    navigator.clipboard.writeText(props.envVar.value).then(() => {
+        message.success('已复制变量值到剪贴板');
+    }).catch(() => {
+        message.error('复制失败');
+    });
+};
+
 function startEditPath() {
     editList.value = [...pathList.value];
     editingPath.value = true;
@@ -224,6 +259,15 @@ watch(editList, (newVal) => {
     word-break: break-word;
 }
 
+.clickable {
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.clickable:hover {
+    opacity: 0.7;
+}
+
 .card-actions {
     display: flex;
 }
@@ -246,6 +290,8 @@ watch(editList, (newVal) => {
     border-radius: 4px;
     border: 1px solid var(--ant-color-border);
     transition: opacity 0.3s;
+    max-height: 500px;
+    overflow-y: auto;
 }
 
 .path-list-container:hover {
