@@ -6,22 +6,15 @@ const SETTINGS_KEY = 'utools-plugin-template-settings'
 
 // 默认设置值
 const defaultSettings = {
-    theme: 'system'
+    theme: 'system',
+    exportPath: '', // 环境变量导出路径
+    autoOpenFolder: true // 导出后自动打开文件夹
 }
 
 // 从 dbStorage 加载设置
 const loadSettings = () => {
     const saved = getData(SETTINGS_KEY, null)
     if (saved) {
-        // 向后兼容：将旧的 isKill 转换为 copyAction
-        if (saved.isKill !== undefined && saved.copyAction === undefined) {
-            saved.copyAction = saved.isKill ? 'copy-close' : 'copy-only'
-            delete saved.isKill
-        }
-        // 确保 copyAction 有默认值
-        if (!saved.copyAction) {
-            saved.copyAction = 'copy-close-paste'
-        }
         return { ...defaultSettings, ...saved }
     }
     return { ...defaultSettings }
@@ -50,12 +43,28 @@ export function useSettingsStore() {
         set: (val) => { settings.value.theme = val }
     })
 
+    const exportPath = computed({
+        get: () => settings.value.exportPath,
+        set: (val) => { settings.value.exportPath = val }
+    })
+
+    const autoOpenFolder = computed({
+        get: () => settings.value.autoOpenFolder,
+        set: (val) => { settings.value.autoOpenFolder = val }
+    })
+
     const setTheme = (theme) => { settings.value.theme = theme }
+    const setExportPath = (path) => { settings.value.exportPath = path }
+    const setAutoOpenFolder = (value) => { settings.value.autoOpenFolder = value }
     const resetToDefault = () => { settings.value = { ...defaultSettings } }
 
     return {
         theme,
+        exportPath,
+        autoOpenFolder,
         setTheme,
+        setExportPath,
+        setAutoOpenFolder,
         resetToDefault
     }
 }

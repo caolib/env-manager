@@ -6,7 +6,7 @@ import HomeView from './components/HomeView.vue';
 import ConfigView from './components/ConfigView.vue';
 import { useSettingsStore } from './stores/settings';
 
-const { Sider, Content } = Layout;
+const { Header, Content } = Layout;
 
 const currentView = ref(['home']);
 const enterAction = ref({});
@@ -34,6 +34,11 @@ const themeConfig = computed(() => {
 const applyTheme = () => {
   document.documentElement.setAttribute('data-theme', actualTheme.value);
 };
+
+// 监听主题变化
+watch(actualTheme, () => {
+  applyTheme();
+});
 
 const menuItems = [
   {
@@ -79,16 +84,32 @@ const handleMenuClick = ({ key }) => {
 
 <template>
   <ConfigProvider :theme="themeConfig">
-    <Layout style="min-height: 100vh;">
-      <Sider :theme="actualTheme === 'dark' ? 'dark' : 'light'" :width="150"
-        :style="{ borderRight: actualTheme === 'dark' ? '1px solid #303030' : '1px solid #f0f0f0' }">
-        <Menu style="height: 100%;" v-model:selectedKeys="currentView" mode="inline" :items="menuItems"
-          @click="handleMenuClick" />
-      </Sider>
-      <Content :style="{ background: actualTheme === 'dark' ? '#303133' : '#f4f4f4' }">
+    <Layout style="min-height: 100vh; background: transparent;">
+      <Header :style="{
+        padding: '0',
+        background: actualTheme === 'dark' ? '#303133' : '#f4f4f4',
+        borderBottom: actualTheme === 'dark' ? '1px solid #303030' : '1px solid #f0f0f0',
+        display: 'flex',
+        alignItems: 'center'
+      }">
+        <Menu v-model:selectedKeys="currentView" mode="horizontal" :items="menuItems"
+          :theme="actualTheme === 'dark' ? 'dark' : 'light'" :style="{
+            flex: 1,
+            border: 'none',
+            background: 'transparent'
+          }" @click="handleMenuClick" />
+      </Header>
+      <Content style="background: transparent; padding: 16px;">
         <HomeView v-if="currentView[0] === 'home'" :enterAction="enterAction" />
         <ConfigView v-else-if="currentView[0] === 'config'" />
       </Content>
     </Layout>
   </ConfigProvider>
 </template>
+
+<style scoped>
+.ant-layout-header {
+  height: 32px;
+  line-height: 32px;
+}
+</style>
