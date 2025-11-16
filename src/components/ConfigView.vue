@@ -160,7 +160,7 @@ onMounted(() => {
 
         <div class="config-section">
             <h3>数据备份</h3>
-            <div class="config-row" style="gap: 10px; justify-content: start;">
+            <div class="config-row" style="gap: 10px; justify-content: flex-start;">
                 <a-button type="primary" @click="exportConfig">
                     <ExportOutlined />
                     导出备份
@@ -200,7 +200,7 @@ div.config-view {
 
 div.config-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: 12px 0;
     width: 100%;
     gap: 10px;

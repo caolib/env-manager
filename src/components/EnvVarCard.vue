@@ -226,11 +226,9 @@ watch(editList, (newVal) => {
 
 .card-actions {
     display: flex;
-    gap: 4px;
 }
 
 .var-value {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 13px;
     word-break: break-all;
 }

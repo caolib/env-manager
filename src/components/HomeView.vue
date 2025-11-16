@@ -114,6 +114,7 @@ import {
 } from '@ant-design/icons-vue';
 import EnvVarCard from './EnvVarCard.vue';
 import { useSettingsStore } from '../stores/settings';
+import { getData, setData } from '../utils/store';
 
 const props = defineProps({
   enterAction: {
@@ -177,6 +178,76 @@ async function loadEnvVars() {
     console.error('Error loading env vars:', error);
   } finally {
     loading.value = false;
+  }
+}
+
+// 检查是否首次使用并显示风险提示
+function checkFirstTimeUse() {
+  const FIRST_TIME_KEY = 'env-manager-first-time-use';
+  const isFirstTime = getData(FIRST_TIME_KEY, true);
+
+  if (isFirstTime) {
+    showFirstTimeWarning();
+    setData(FIRST_TIME_KEY, false);
+  }
+}
+
+// 显示首次使用警告对话框
+function showFirstTimeWarning() {
+  Modal.warning({
+    title: '重要提示',
+    width: 500,
+    content: '修改环境变量存在风险！建议在进行任何修改之前，请先导出当前配置作为备份。',
+    okText: '我已知晓',
+    onOk: () => {
+      // 提示用户导出备份
+      Modal.confirm({
+        title: '是否现在导出备份？',
+        content: '强烈建议您先导出当前的环境变量配置作为备份。',
+        okText: '立即导出',
+        cancelText: '稍后再说',
+        onOk: () => {
+          exportCurrentConfig();
+        }
+      });
+    }
+  });
+}
+
+// 导出当前配置
+function exportCurrentConfig() {
+  try {
+    // 使用东八区时间
+    const now = new Date();
+    const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+    const timestamp = beijingTime.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const fileName = `env-manager-初始备份-${timestamp}.json`;
+
+    const configData = {
+      version: '1.0.0',
+      exportTime: beijingTime.toISOString(),
+      settings: {
+        theme: settingsStore.theme.value
+      },
+      env_vars: {
+        system_vars: systemVars.value,
+        user_vars: userVars.value
+      }
+    };
+
+    const result = window.services.exportConfig(configData, fileName);
+    if (result.success) {
+      message.success(`备份已导出到: ${result.path}`);
+      // 自动打开文件所在位置
+      window.services.revealInExplorer(result.path);
+    } else {
+      if (result.message !== '用户取消保存') {
+        message.error(`导出失败: ${result.message}`);
+      }
+    }
+  } catch (error) {
+    message.error(`导出配置失败: ${error.message}`);
+    console.error('Export error:', error);
   }
 }
 
@@ -361,6 +432,8 @@ onMounted(() => {
   loadEnvVars();
   // 初始化时也配置一次子输入框
   setupSubInput();
+  // 检查是否首次使用
+  checkFirstTimeUse();
 });
 </script>
 
