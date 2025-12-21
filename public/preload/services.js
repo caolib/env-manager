@@ -1,6 +1,39 @@
 const fs = require('node:fs')
 const path = require('node:path')
-const { exec, execSync } = require('node:child_process')
+const { exec, execFileSync } = require('node:child_process')
+
+function getRegExePath() {
+  const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || 'C:\\Windows'
+  return path.join(systemRoot, 'System32', 'reg.exe')
+}
+
+function regQuery(keyPath) {
+  return execFileSync(getRegExePath(), ['query', keyPath], {
+    encoding: 'utf-8',
+    windowsHide: true,
+    // 环境变量（尤其 PATH）可能很长，默认 1MB 容易触发 ENOBUFS
+    maxBuffer: 1024 * 1024 * 50
+  })
+}
+
+function regAdd(scope, name, value) {
+  // 写入操作不需要 stdout；保留 stderr 用于权限/错误判断
+  return execFileSync(getRegExePath(), ['add', scope, '/v', name, '/t', 'REG_EXPAND_SZ', '/d', value, '/f'], {
+    encoding: 'utf-8',
+    windowsHide: true,
+    maxBuffer: 1024 * 1024 * 50,
+    stdio: ['ignore', 'ignore', 'pipe']
+  })
+}
+
+function regDelete(scope, name) {
+  return execFileSync(getRegExePath(), ['delete', scope, '/v', name, '/f'], {
+    encoding: 'utf-8',
+    windowsHide: true,
+    maxBuffer: 1024 * 1024 * 50,
+    stdio: ['ignore', 'ignore', 'pipe']
+  })
+}
 
 // 通过 window 对象向渲染进程注入 nodejs 能力
 window.services = {
@@ -33,13 +66,11 @@ window.services = {
   getEnvVars: function () {
     try {
       // 读取系统环境变量
-      const systemCmd = 'reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"'
-      const systemResult = execSync(systemCmd, { encoding: 'utf-8' })
+      const systemResult = regQuery('HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment')
       const systemVars = this._parseRegOutput(systemResult)
 
       // 读取用户环境变量
-      const userCmd = 'reg query "HKCU\\Environment"'
-      const userResult = execSync(userCmd, { encoding: 'utf-8' })
+      const userResult = regQuery('HKCU\\Environment')
       const userVars = this._parseRegOutput(userResult)
 
       return {
@@ -85,10 +116,7 @@ window.services = {
 
     try {
       const scope = isSystem ? 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment' : 'HKCU\\Environment'
-      const escapedValue = value.replace(/"/g, '\\"')
-      const cmd = 'reg add "' + scope + '" /v "' + name + '" /t REG_EXPAND_SZ /d "' + escapedValue + '" /f'
-
-      execSync(cmd, { encoding: 'utf-8' })
+      regAdd(scope, name, value)
 
 
       return { success: true }
@@ -111,9 +139,7 @@ window.services = {
 
     try {
       const scope = isSystem ? 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment' : 'HKCU\\Environment'
-      const cmd = 'reg delete "' + scope + '" /v "' + name + '" /f'
-
-      execSync(cmd, { encoding: 'utf-8' })
+      regDelete(scope, name)
 
 
       return { success: true }
@@ -140,12 +166,20 @@ window.services = {
       const testVarName = '_UTOOLS_ADMIN_TEST_'
 
       // 尝试创建一个测试变量
-      const setCmd = `reg add "${testKey}" /v ${testVarName} /t REG_SZ /d "test" /f`
-      execSync(setCmd, { encoding: 'utf-8' })
+      execFileSync(getRegExePath(), ['add', testKey, '/v', testVarName, '/t', 'REG_SZ', '/d', 'test', '/f'], {
+        encoding: 'utf-8',
+        windowsHide: true,
+        maxBuffer: 1024 * 1024 * 50,
+        stdio: ['ignore', 'ignore', 'pipe']
+      })
 
       // 立即删除测试变量
-      const delCmd = `reg delete "${testKey}" /v ${testVarName} /f`
-      execSync(delCmd, { encoding: 'utf-8' })
+      execFileSync(getRegExePath(), ['delete', testKey, '/v', testVarName, '/f'], {
+        encoding: 'utf-8',
+        windowsHide: true,
+        maxBuffer: 1024 * 1024 * 50,
+        stdio: ['ignore', 'ignore', 'pipe']
+      })
 
       return true
     } catch (error) {

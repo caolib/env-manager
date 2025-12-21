@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 
 **lock.yaml
+
+.claude/settings.local.json

@@ -99,8 +99,41 @@
         </a-form-item>
 
         <a-form-item label="变量值" required>
-          <a-textarea v-model:value="formData.value" placeholder="输入变量值" :rows="8" />
+          <a-textarea v-model:value="formData.value" placeholder="输入变量值" :auto-size="{ minRows: 1, maxRows: 8 }" />
         </a-form-item>
+
+        <!-- 普通变量：备用值管理（Path 变量不显示） -->
+        <div v-if="showAlternativesSection" style="margin-top: 12px;">
+          <a-typography-text style="display:block; margin-bottom: 8px;">备用值（可选）</a-typography-text>
+
+          <div style="display:flex; gap: 8px; align-items: flex-start;">
+            <a-textarea v-model:value="altValueInput" placeholder="输入一个备用值" :auto-size="{ minRows: 1, maxRows: 4 }" style="flex: 1;" />
+            <a-input v-model:value="altNoteInput" placeholder="备注（可不填）" style="width: 160px;" />
+            <a-button type="primary" @click="addAlternative" :disabled="!canAddAlternative">添加</a-button>
+          </div>
+
+          <div v-if="currentAlternatives.length" style="margin-top: 10px; border: 1px solid var(--ant-color-border); border-radius: 6px; padding: 8px;">
+            <div v-for="(item, idx) in currentAlternatives" :key="idx" style="display:flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--ant-color-split);"
+              :style="idx === currentAlternatives.length - 1 ? { borderBottom: 'none' } : {}">
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12px; color: var(--ant-color-text-secondary);" v-if="item.note">{{ item.note }}</div>
+                <div style="word-break: break-all; font-size: 12px;">
+                  {{ item.value }}
+                </div>
+              </div>
+              <a-space>
+                <a-button size="small" @click="applyAlternative(item.value)">切换</a-button>
+                <a-popconfirm title="删除该备用值？" ok-text="删除" cancel-text="取消" @confirm="removeAlternative(idx)">
+                  <a-button size="small" danger>删除</a-button>
+                </a-popconfirm>
+              </a-space>
+            </div>
+          </div>
+
+          <div v-else style="margin-top: 8px; font-size: 12px; color: var(--ant-color-text-secondary);">
+            还没有备用值。你可以添加多个备用值，然后点击“切换”快速填入。
+          </div>
+        </div>
 
         <a-alert v-if="formData.scope === 'system'" message="修改系统环境变量需要管理员权限" type="warning" show-icon />
       </a-form>
@@ -132,6 +165,98 @@ const props = defineProps({
 
 const settingsStore = useSettingsStore();
 
+// 普通变量：备用值（按 scope + name 存储到 dbStorage）
+const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
+const alternativesState = ref(loadAlternatives());
+
+function loadAlternatives() {
+  const saved = getData(ALT_VALUES_KEY, null);
+  if (saved && typeof saved === 'object') {
+    return {
+      system: saved.system && typeof saved.system === 'object' ? saved.system : {},
+      user: saved.user && typeof saved.user === 'object' ? saved.user : {}
+    };
+  }
+  return { system: {}, user: {} };
+}
+
+function persistAlternatives() {
+  const serializableValue = JSON.parse(JSON.stringify(alternativesState.value));
+  setData(ALT_VALUES_KEY, serializableValue);
+}
+
+function normalizeScope(scope) {
+  return scope === 'system' ? 'system' : 'user';
+}
+
+function getAlternatives(scope, name) {
+  const s = normalizeScope(scope);
+  const key = (name || '').trim();
+  if (!key) return [];
+  const list = alternativesState.value?.[s]?.[key];
+  return Array.isArray(list) ? list : [];
+}
+
+function setAlternatives(scope, name, list) {
+  const s = normalizeScope(scope);
+  const key = (name || '').trim();
+  if (!key) return;
+  if (!alternativesState.value[s]) alternativesState.value[s] = {};
+  alternativesState.value[s][key] = list;
+  persistAlternatives();
+}
+
+function removeAlternatives(scope, name) {
+  const s = normalizeScope(scope);
+  const key = (name || '').trim();
+  if (!key) return;
+  if (alternativesState.value?.[s] && alternativesState.value[s][key]) {
+    delete alternativesState.value[s][key];
+    persistAlternatives();
+  }
+}
+
+function moveAlternatives(scope, fromName, toName) {
+  const s = normalizeScope(scope);
+  const fromKey = (fromName || '').trim();
+  const toKey = (toName || '').trim();
+  if (!fromKey || !toKey || fromKey === toKey) return;
+  const fromList = getAlternatives(s, fromKey);
+  if (!fromList.length) return;
+
+  const existing = getAlternatives(s, toKey);
+  const merged = mergeAlternatives(existing, fromList);
+  setAlternatives(s, toKey, merged);
+  removeAlternatives(s, fromKey);
+}
+
+function mergeAlternatives(baseList, incomingList) {
+  const result = [];
+  const seen = new Set();
+  const pushItem = (it) => {
+    const value = (it?.value ?? '').toString();
+    if (!value) return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    result.push({ value, note: (it?.note ?? '').toString() });
+  };
+  [...incomingList, ...baseList].forEach(pushItem);
+  return result;
+}
+
+function ensureAlternativeExists(scope, name, value, note = '') {
+  const varName = (name || '').trim();
+  const v = (value ?? '').toString();
+  if (!varName || !v) return;
+  if (isPathVarValue(v)) return;
+
+  const existing = getAlternatives(scope, varName);
+  const has = existing.some(it => (it?.value ?? '').toString() === v);
+  if (has) return;
+
+  setAlternatives(scope, varName, [{ value: v, note: (note ?? '').toString() }, ...existing]);
+}
+
 // 状态
 const systemVars = ref([]);
 const userVars = ref([]);
@@ -152,6 +277,67 @@ const formData = ref({
   value: '',
   scope: 'user'
 });
+
+// 备用值 UI 状态
+const altValueInput = ref('');
+const altNoteInput = ref('');
+
+// 判断是否为 path 变量（分号分隔的多路径）
+function isPathVarValue(value) {
+  const v = (value ?? '').toString().trim();
+  if (!v) return false;
+  return v.includes(';') && v.split(';').filter(Boolean).length > 1;
+}
+
+const showAlternativesSection = computed(() => {
+  // 仅对普通变量显示；Path 变量不显示
+  return !!formData.value.name?.trim() && !isPathVarValue(formData.value.value);
+});
+
+const currentAlternatives = computed(() => {
+  if (!showAlternativesSection.value) return [];
+  return getAlternatives(formData.value.scope, formData.value.name);
+});
+
+const canAddAlternative = computed(() => {
+  return !!formData.value.name?.trim() && !!altValueInput.value.trim() && !isPathVarValue(formData.value.value);
+});
+
+function addAlternative() {
+  const name = formData.value.name?.trim();
+  if (!name) return;
+  if (isPathVarValue(formData.value.value)) return;
+
+  const value = altValueInput.value.trim();
+  const note = altNoteInput.value.trim();
+  if (!value) return;
+
+  const existing = getAlternatives(formData.value.scope, name);
+  const withoutSame = existing.filter(it => (it?.value ?? '').toString() !== value);
+  const next = [{ value, note }, ...withoutSame];
+  setAlternatives(formData.value.scope, name, next);
+  altValueInput.value = '';
+  altNoteInput.value = '';
+  message.success('已添加备用值');
+}
+
+function removeAlternative(index) {
+  const name = formData.value.name?.trim();
+  if (!name) return;
+  const existing = getAlternatives(formData.value.scope, name);
+  const next = existing.filter((_, i) => i !== index);
+  setAlternatives(formData.value.scope, name, next);
+  message.success('已删除备用值');
+}
+
+function applyAlternative(value) {
+  // 切换前，先把当前值自动保存为一个备用值，避免“切换后原值丢失”
+  const currentValue = (formData.value.value ?? '').toString();
+  if (currentValue && currentValue !== value) {
+    ensureAlternativeExists(formData.value.scope, formData.value.name, currentValue);
+  }
+  formData.value.value = value;
+}
 
 // 计算属性：过滤后的变量
 const filteredSystemVars = computed(() => {
@@ -248,11 +434,14 @@ function exportCurrentConfig() {
     const fileName = `env-manager-初始备份-${timestamp}.json`;
 
     const configData = {
-      version: '1.0.0',
+      version: '1.1.0',
       exportTime: beijingTime.toISOString(),
       settings: {
-        theme: settingsStore.theme.value
+        theme: settingsStore.theme.value,
+        sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
+        sensitiveKeywords: settingsStore.sensitiveKeywords.value
       },
+      var_alternatives: alternativesState.value,
       env_vars: {
         system_vars: systemVars.value,
         user_vars: userVars.value
@@ -334,6 +523,13 @@ function editVar(row, scope) {
   originalVarName.value = row.name;
   editMode.value = true;
   showDialog.value = true;
+
+  // 进入编辑弹窗时，把当前值自动纳入备用值（仅普通变量）
+  ensureAlternativeExists(scope, row.name, row.value);
+
+  // 清理备用值输入
+  altValueInput.value = '';
+  altNoteInput.value = '';
 }
 
 // 取消编辑
@@ -343,6 +539,9 @@ function cancelEdit() {
   kvInput.value = '';
   editMode.value = false;
   originalVarName.value = '';
+
+  altValueInput.value = '';
+  altNoteInput.value = '';
 }
 
 // 解析 KV 格式输入
@@ -382,6 +581,11 @@ async function handleSubmit() {
 
   submitting.value = true;
   try {
+    // 如果是编辑模式且变量名发生了变化，迁移备用值
+    if (editMode.value && originalVarName.value && originalVarName.value !== formData.value.name) {
+      moveAlternatives(formData.value.scope, originalVarName.value, formData.value.name);
+    }
+
     // 如果是编辑模式且变量名发生了变化，先删除旧的
     if (editMode.value && originalVarName.value !== formData.value.name) {
       await window.services.deleteEnvVar(
@@ -420,6 +624,8 @@ async function deleteVar(row, scope) {
     onOk: async () => {
       try {
         await window.services.deleteEnvVar(row.name, scope === 'system');
+        // 同步清理备用值
+        removeAlternatives(scope, row.name);
         message.success(`变量 "${row.name}" 删除成功`);
         await loadEnvVars();
       } catch (error) {

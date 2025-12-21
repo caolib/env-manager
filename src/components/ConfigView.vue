@@ -4,11 +4,16 @@ import { computed, ref, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { ExportOutlined, ImportOutlined } from '@ant-design/icons-vue';
 import { useSettingsStore } from '../stores/settings'
+import { getData, setData } from '../utils/store'
 
 const settingsStore = useSettingsStore();
 
+// 普通变量备用值（与 HomeView 保持一致）
+const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
+
 const systemVars = ref([]);
 const userVars = ref([]);
+const isAdmin = ref(false);
 
 const theme = computed({
     get: () => settingsStore.theme.value,
@@ -46,6 +51,15 @@ async function loadEnvVars() {
     }
 }
 
+function checkAdminPrivileges() {
+    try {
+        isAdmin.value = !!window.services.checkAdminPrivileges();
+    } catch (error) {
+        console.error('检查管理员权限失败:', error);
+        isAdmin.value = false;
+    }
+}
+
 // 导出配置（包含环境变量和应用配置）
 const exportConfig = () => {
     try {
@@ -56,11 +70,14 @@ const exportConfig = () => {
         const fileName = `env-manager-${timestamp}.json`;
 
         const configData = {
-            version: '1.0.0',
+            version: '1.1.0',
             exportTime: beijingTime.toISOString(),
             settings: {
-                theme: settingsStore.theme.value
+                theme: settingsStore.theme.value,
+                sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
+                sensitiveKeywords: settingsStore.sensitiveKeywords.value
             },
+            var_alternatives: getData(ALT_VALUES_KEY, { system: {}, user: {} }),
             env_vars: {
                 system_vars: systemVars.value,
                 user_vars: userVars.value
@@ -91,33 +108,58 @@ const importConfig = () => {
         cancelText: '取消',
         async onOk() {
             try {
+                // 导入前刷新一次权限状态（避免中途提权/降权造成误判）
+                checkAdminPrivileges();
+
                 const result = window.services.importConfig();
                 if (result.success) {
                     const config = result.data;
 
                     let imported = 0;
                     let failed = 0;
+                    let skipped = 0;
 
                     // 导入应用设置
                     if (config.settings) {
                         const s = config.settings;
                         if (s.theme !== undefined) settingsStore.setTheme(s.theme);
+                        if (s.sensitiveFieldsEnabled !== undefined) settingsStore.setSensitiveFieldsEnabled(!!s.sensitiveFieldsEnabled);
+                        if (s.sensitiveKeywords !== undefined && Array.isArray(s.sensitiveKeywords)) settingsStore.setSensitiveKeywords(s.sensitiveKeywords);
+                    }
+
+                    // 导入普通变量备用值
+                    if (config.var_alternatives && typeof config.var_alternatives === 'object') {
+                        const a = config.var_alternatives;
+                        const safe = {
+                            system: a.system && typeof a.system === 'object' ? a.system : {},
+                            user: a.user && typeof a.user === 'object' ? a.user : {}
+                        };
+                        setData(ALT_VALUES_KEY, safe);
                     }
 
                     // 导入环境变量
                     if (config.env_vars) {
                         const envVars = config.env_vars;
 
+                        const systemVarCount = Array.isArray(envVars.system_vars) ? envVars.system_vars.length : 0;
+                        if (!isAdmin.value && systemVarCount > 0) {
+                            message.warning('当前无管理员权限：系统环境变量修改将会失败，已跳过系统变量导入');
+                        }
+
                         // 导入系统变量
                         if (envVars.system_vars) {
-                            for (const v of envVars.system_vars) {
-                                try {
-                                    await window.services.setEnvVar(v.name, v.value, true);
-                                    imported++;
-                                } catch (error) {
-                                    console.error(`导入系统变量 ${v.name} 失败:`, error);
-                                    failed++;
+                            if (isAdmin.value) {
+                                for (const v of envVars.system_vars) {
+                                    try {
+                                        await window.services.setEnvVar(v.name, v.value, true);
+                                        imported++;
+                                    } catch (error) {
+                                        console.error(`导入系统变量 ${v.name} 失败:`, error);
+                                        failed++;
+                                    }
                                 }
+                            } else {
+                                skipped += Array.isArray(envVars.system_vars) ? envVars.system_vars.length : 0;
                             }
                         }
 
@@ -137,7 +179,7 @@ const importConfig = () => {
                         await loadEnvVars();
                     }
 
-                    message.success(`导入完成！${imported > 0 ? `环境变量: 成功 ${imported} 个${failed > 0 ? `，失败 ${failed} 个` : ''}` : '配置已导入'}`);
+                    message.success(`导入完成！${imported > 0 || failed > 0 || skipped > 0 ? `环境变量: 成功 ${imported} 个${failed > 0 ? `，失败 ${failed} 个` : ''}${skipped > 0 ? `，跳过 ${skipped} 个(系统变量)` : ''}` : '配置已导入'}`);
                 } else {
                     if (result.message !== '用户取消选择') {
                         message.error(`导入失败: ${result.message}`);
@@ -174,6 +216,7 @@ const removeSensitiveKeyword = (index) => {
 };
 
 onMounted(() => {
+    checkAdminPrivileges();
     loadEnvVars();
 });
 
