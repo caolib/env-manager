@@ -53,9 +53,9 @@
           </template>
           <div class="vars-container">
             <EnvVarCard v-for="row in filteredSystemVars" :key="row.name" :env-var="row" :highlight="searchKeyword"
-              :is-readonly="!isAdmin" :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
-              :sensitive-keywords="settingsStore.sensitiveKeywords.value"
-              @edit="(row) => editVar(row, 'system')"
+              :disabled="row.disabled" :is-readonly="!isAdmin"
+              :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
+              :sensitive-keywords="settingsStore.sensitiveKeywords.value" @edit="(row) => editVar(row, 'system')"
               @delete="(row) => deleteVar(row, 'system')" />
           </div>
         </a-collapse-panel>
@@ -77,9 +77,9 @@
           </template>
           <div class="vars-container">
             <EnvVarCard v-for="row in filteredUserVars" :key="row.name" :env-var="row" :highlight="searchKeyword"
-              :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
-              :sensitive-keywords="settingsStore.sensitiveKeywords.value"
-              @edit="(row) => editVar(row, 'user')" @delete="(row) => deleteVar(row, 'user')" />
+              :disabled="row.disabled" :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
+              :sensitive-keywords="settingsStore.sensitiveKeywords.value" @edit="(row) => editVar(row, 'user')"
+              @delete="(row) => deleteVar(row, 'user')" />
           </div>
         </a-collapse-panel>
       </a-collapse>
@@ -89,6 +89,22 @@
     <a-modal v-model:open="showDialog" :title="editMode ? '编辑环境变量' : '添加环境变量'" @ok="handleSubmit" @cancel="cancelEdit"
       :confirmLoading="submitting" width="600px">
       <a-form :model="formData" layout="vertical">
+        <!-- 启用/禁用开关 -->
+        <a-form-item>
+          <div
+            style="display: flex; align-items: center; gap: 12px; padding: 8px; background-color: var(--ant-color-fill-quaternary); border-radius: 4px;">
+            <a-switch v-model:checked="formEnabled" checked-children="启用" un-checked-children="禁用" />
+            <a-tooltip placement="right">
+              <template #title>
+                <div v-if="formEnabled" style="max-width: 280px;">
+                  禁用后变量将不生效，但会保存在插件中，可随时重新启用。
+                </div>
+              </template>
+              <QuestionCircleOutlined style="color: var(--ant-color-text-tertiary); cursor: help;" />
+            </a-tooltip>
+          </div>
+        </a-form-item>
+
         <!-- KV 格式快捷输入 -->
         <a-form-item label="输入键值对 (key=value)">
           <a-input v-model:value="kvInput" placeholder="例如: MY_VAR=value" @input="parseKVInput" />
@@ -107,16 +123,20 @@
           <a-typography-text style="display:block; margin-bottom: 8px;">备用值（可选）</a-typography-text>
 
           <div style="display:flex; gap: 8px; align-items: flex-start;">
-            <a-textarea v-model:value="altValueInput" placeholder="输入一个备用值" :auto-size="{ minRows: 1, maxRows: 4 }" style="flex: 1;" />
+            <a-textarea v-model:value="altValueInput" placeholder="输入一个备用值" :auto-size="{ minRows: 1, maxRows: 4 }"
+              style="flex: 1;" />
             <a-input v-model:value="altNoteInput" placeholder="备注（可不填）" style="width: 160px;" />
             <a-button type="primary" @click="addAlternative" :disabled="!canAddAlternative">添加</a-button>
           </div>
 
-          <div v-if="currentAlternatives.length" style="margin-top: 10px; border: 1px solid var(--ant-color-border); border-radius: 6px; padding: 8px;">
-            <div v-for="(item, idx) in currentAlternatives" :key="idx" style="display:flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--ant-color-split);"
+          <div v-if="currentAlternatives.length"
+            style="margin-top: 10px; border: 1px solid var(--ant-color-border); border-radius: 6px; padding: 8px;">
+            <div v-for="(item, idx) in currentAlternatives" :key="idx"
+              style="display:flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--ant-color-split);"
               :style="idx === currentAlternatives.length - 1 ? { borderBottom: 'none' } : {}">
               <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 12px; color: var(--ant-color-text-secondary);" v-if="item.note">{{ item.note }}</div>
+                <div style="font-size: 12px; color: var(--ant-color-text-secondary);" v-if="item.note">{{ item.note }}
+                </div>
                 <div style="word-break: break-all; font-size: 12px;">
                   {{ item.value }}
                 </div>
@@ -131,7 +151,7 @@
           </div>
 
           <div v-else style="margin-top: 8px; font-size: 12px; color: var(--ant-color-text-secondary);">
-            还没有备用值。你可以添加多个备用值，然后点击“切换”快速填入。
+            还没有备用值。你可以添加多个备用值进行切换。
           </div>
         </div>
 
@@ -150,7 +170,8 @@ import {
   WindowsOutlined,
   UserOutlined,
   WarningOutlined,
-  CheckOutlined
+  CheckOutlined,
+  QuestionCircleOutlined
 } from '@ant-design/icons-vue';
 import EnvVarCard from './EnvVarCard.vue';
 import { useSettingsStore } from '../stores/settings';
@@ -168,6 +189,10 @@ const settingsStore = useSettingsStore();
 // 普通变量：备用值（按 scope + name 存储到 dbStorage）
 const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
 const alternativesState = ref(loadAlternatives());
+
+// 禁用变量存储
+const DISABLED_VARS_KEY = 'env-manager-disabled-vars-v1';
+const disabledVarsState = ref(loadDisabledVars());
 
 function loadAlternatives() {
   const saved = getData(ALT_VALUES_KEY, null);
@@ -215,6 +240,54 @@ function removeAlternatives(scope, name) {
     persistAlternatives();
   }
 }
+
+// 禁用变量管理函数
+function loadDisabledVars() {
+  const saved = getData(DISABLED_VARS_KEY, null);
+  if (saved && typeof saved === 'object') {
+    return {
+      system: saved.system && typeof saved.system === 'object' ? saved.system : {},
+      user: saved.user && typeof saved.user === 'object' ? saved.user : {}
+    };
+  }
+  return { system: {}, user: {} };
+}
+
+function persistDisabledVars() {
+  const serializableValue = JSON.parse(JSON.stringify(disabledVarsState.value));
+  setData(DISABLED_VARS_KEY, serializableValue);
+}
+
+function getDisabledVar(scope, name) {
+  const s = normalizeScope(scope);
+  const key = (name || '').trim();
+  if (!key) return null;
+  return disabledVarsState.value?.[s]?.[key] || null;
+}
+
+function setDisabledVar(scope, name, value) {
+  const s = normalizeScope(scope);
+  const key = (name || '').trim();
+  if (!key) return;
+  if (!disabledVarsState.value[s]) disabledVarsState.value[s] = {};
+  disabledVarsState.value[s][key] = { value, disabledAt: Date.now() };
+  persistDisabledVars();
+}
+
+function removeDisabledVar(scope, name) {
+  const s = normalizeScope(scope);
+  const key = (name || '').trim();
+  if (!key) return;
+  if (disabledVarsState.value?.[s] && disabledVarsState.value[s][key]) {
+    delete disabledVarsState.value[s][key];
+    persistDisabledVars();
+  }
+}
+
+function isVarDisabled(scope, name) {
+  return getDisabledVar(scope, name) !== null;
+}
+
 
 function moveAlternatives(scope, fromName, toName) {
   const s = normalizeScope(scope);
@@ -275,7 +348,14 @@ const kvInput = ref('');
 const formData = ref({
   name: '',
   value: '',
-  scope: 'user'
+  scope: 'user',
+  disabled: false
+});
+
+// 启用状态计算属性（开关打开=启用，开关关闭=禁用）
+const formEnabled = computed({
+  get: () => !formData.value.disabled,
+  set: (val) => { formData.value.disabled = !val; }
 });
 
 // 备用值 UI 状态
@@ -341,14 +421,66 @@ function applyAlternative(value) {
 
 // 计算属性：过滤后的变量
 const filteredSystemVars = computed(() => {
-  return filterVars(systemVars.value);
+  return mergeAndFilterVars(systemVars.value, 'system');
 });
 
 const filteredUserVars = computed(() => {
-  return filterVars(userVars.value);
+  return mergeAndFilterVars(userVars.value, 'user');
 });
 
-// 过滤函数
+// 合并并过滤变量（激活的 + 禁用的）
+function mergeAndFilterVars(activeVars, scope) {
+  // 1. 从注册表获取的激活变量
+  const active = activeVars.map(v => ({ ...v, disabled: false }));
+
+  // 2. 从 dbStorage 获取禁用的变量
+  const disabledVarsObj = disabledVarsState.value[scope] || {};
+  const disabled = Object.keys(disabledVarsObj).map(name => ({
+    name,
+    value: disabledVarsObj[name].value,
+    disabled: true,
+    disabledAt: disabledVarsObj[name].disabledAt
+  }));
+
+  // 3. 合并（确保禁用变量不会与激活变量重复）
+  const disabledNames = new Set(disabled.map(v => v.name));
+  const activeFiltered = active.filter(v => !disabledNames.has(v.name));
+  const merged = [...activeFiltered, ...disabled];
+
+  // 4. 应用搜索过滤
+  let filtered = merged;
+  if (searchKeyword.value) {
+    const keyword = searchKeyword.value.toLowerCase();
+    filtered = merged.filter(v => {
+      return v.name.toLowerCase().includes(keyword) || v.value.toLowerCase().includes(keyword);
+    });
+  }
+
+  // 5. 排序：启用的 Path 变量 -> 启用的普通变量 -> 禁用的 Path 变量 -> 禁用的普通变量
+  return filtered.sort((a, b) => {
+    // 首先按禁用状态排序（启用在前）
+    if (a.disabled !== b.disabled) {
+      return a.disabled ? 1 : -1;
+    }
+
+    // 同状态下，path 变量在后
+    const aIsPath = isPathVar(a);
+    const bIsPath = isPathVar(b);
+    if (aIsPath !== bIsPath) {
+      return aIsPath ? 1 : -1;
+    }
+
+    // 禁用变量按禁用时间排序（越晚禁用的越靠后）
+    if (a.disabled && b.disabled) {
+      return (a.disabledAt || 0) - (b.disabledAt || 0);
+    }
+
+    // 其他情况按名称排序
+    return a.name.localeCompare(b.name);
+  });
+}
+
+// 过滤函数（已废弃，由 mergeAndFilterVars 替代）
 function filterVars(vars) {
   let filtered = vars;
   if (searchKeyword.value) {
@@ -434,7 +566,7 @@ function exportCurrentConfig() {
     const fileName = `env-manager-初始备份-${timestamp}.json`;
 
     const configData = {
-      version: '1.1.0',
+      version: '1.2.0',
       exportTime: beijingTime.toISOString(),
       settings: {
         theme: settingsStore.theme.value,
@@ -442,6 +574,7 @@ function exportCurrentConfig() {
         sensitiveKeywords: settingsStore.sensitiveKeywords.value
       },
       var_alternatives: alternativesState.value,
+      disabled_vars: disabledVarsState.value,
       env_vars: {
         system_vars: systemVars.value,
         user_vars: userVars.value
@@ -502,23 +635,27 @@ function restartAsAdmin() {
 
 // 显示添加对话框
 function showAddSystemDialog() {
-  formData.value = { name: '', value: '', scope: 'system' };
+  formData.value = { name: '', value: '', scope: 'system', disabled: false };
   editMode.value = false;
   showDialog.value = true;
 }
 
 function showAddUserDialog() {
-  formData.value = { name: '', value: '', scope: 'user' };
+  formData.value = { name: '', value: '', scope: 'user', disabled: false };
   editMode.value = false;
   showDialog.value = true;
 }
 
 // 编辑变量
 function editVar(row, scope) {
+  // 检查变量是否禁用
+  const disabledInfo = getDisabledVar(scope, row.name);
+
   formData.value = {
     name: row.name,
     value: row.value,
-    scope: scope
+    scope: scope,
+    disabled: !!disabledInfo  // 设置禁用状态
   };
   originalVarName.value = row.name;
   editMode.value = true;
@@ -535,7 +672,7 @@ function editVar(row, scope) {
 // 取消编辑
 function cancelEdit() {
   showDialog.value = false;
-  formData.value = { name: '', value: '', scope: 'user' };
+  formData.value = { name: '', value: '', scope: 'user', disabled: false };
   kvInput.value = '';
   editMode.value = false;
   originalVarName.value = '';
@@ -563,7 +700,7 @@ async function handleSubmit() {
     return;
   }
 
-  // 检查是否已存在
+  // 检查是否已存在（只检查激活的变量）
   const targetVars = formData.value.scope === 'system' ? systemVars.value : userVars.value;
   const existingVar = targetVars.find(v => v.name === formData.value.name);
 
@@ -586,23 +723,46 @@ async function handleSubmit() {
       moveAlternatives(formData.value.scope, originalVarName.value, formData.value.name);
     }
 
-    // 如果是编辑模式且变量名发生了变化，先删除旧的
+    // 如果是编辑模式且变量名发生了变化，先删除旧的（注册表和禁用存储）
     if (editMode.value && originalVarName.value !== formData.value.name) {
-      await window.services.deleteEnvVar(
-        originalVarName.value,
-        formData.value.scope === 'system'
-      );
+      // 删除注册表中的旧变量（可能不存在，忽略错误）
+      try {
+        await window.services.deleteEnvVar(
+          originalVarName.value,
+          formData.value.scope === 'system'
+        );
+      } catch (err) {
+        // 忽略删除失败（可能原本就是禁用状态）
+      }
+      // 删除禁用存储中的旧变量
+      removeDisabledVar(formData.value.scope, originalVarName.value);
     }
 
-    // 设置新的环境变量
-    await window.services.setEnvVar(
-      formData.value.name,
-      formData.value.value,
-      formData.value.scope === 'system'
-    );
+    // 根据启用/禁用状态处理
+    if (formData.value.disabled) {
+      // 禁用：从注册表删除，保存到 dbStorage
+      try {
+        await window.services.deleteEnvVar(
+          formData.value.name,
+          formData.value.scope === 'system'
+        );
+      } catch (err) {
+        // 忽略删除失败（可能原本就不存在）
+      }
+      setDisabledVar(formData.value.scope, formData.value.name, formData.value.value);
+    } else {
+      // 启用：写入注册表，从 dbStorage 删除
+      await window.services.setEnvVar(
+        formData.value.name,
+        formData.value.value,
+        formData.value.scope === 'system'
+      );
+      removeDisabledVar(formData.value.scope, formData.value.name);
+    }
 
     const action = editMode.value ? '更新' : '添加';
-    message.success(`变量 "${formData.value.name}" ${action}成功`);
+    const status = formData.value.disabled ? '（已禁用）' : '';
+    message.success(`变量 "${formData.value.name}" ${action}成功${status}`);
 
     showDialog.value = false;
     cancelEdit();
@@ -620,10 +780,17 @@ async function handleSubmit() {
 async function deleteVar(row, scope) {
   Modal.confirm({
     title: '确认删除',
-    content: `确定要删除变量 "${row.name}" 吗？`,
+    content: `确定要删除变量 "${row.name}" 吗？此操作将从注册表和插件存储中永久删除该变量。`,
     onOk: async () => {
       try {
-        await window.services.deleteEnvVar(row.name, scope === 'system');
+        // 删除注册表中的变量
+        try {
+          await window.services.deleteEnvVar(row.name, scope === 'system');
+        } catch (err) {
+          // 忽略删除失败（可能是禁用状态）
+        }
+        // 删除禁用存储
+        removeDisabledVar(scope, row.name);
         // 同步清理备用值
         removeAlternatives(scope, row.name);
         message.success(`变量 "${row.name}" 删除成功`);
@@ -714,7 +881,7 @@ async function checkAllPaths() {
           h('h4', { style: { marginBottom: '8px' } }, '不存在的路径详情:'),
           h('div', { style: { maxHeight: '400px', overflowY: 'auto' } },
             notExistDetails.map(item =>
-              h('div', { style: { marginBottom: '12px', padding: '8px', backgroundColor: '#fafafa', borderRadius: '4px' } }, [
+              h('div', { style: { marginBottom: '12px', padding: '8px', borderRadius: '4px' } }, [
                 h('div', { style: { fontSize: '12px', color: '#666', marginBottom: '4px' } }, `变量: ${item.varName}`),
                 h('div', { style: { fontSize: '12px', wordBreak: 'break-all' } }, item.path)
               ])

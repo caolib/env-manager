@@ -1,9 +1,15 @@
 <template>
-    <a-card size="small" class="env-var-card" :class="{ 'path-card': isSemicolonSeparatedValue }">
+    <a-card size="small" class="env-var-card" :class="{
+        'path-card': isSemicolonSeparatedValue,
+        'disabled-card': props.disabled || props.envVar.disabled
+    }">
         <template #title>
             <div class="card-header">
-                <span class="var-name clickable" v-html="renderName(envVar.name)" @click="copyKey"
-                    title="点击复制变量名"></span>
+                <span class="var-name clickable" :class="{ 'disabled-text': props.disabled || props.envVar.disabled }"
+                    v-html="renderName(envVar.name)" @click="copyKey" title="点击复制变量名"></span>
+                <a-tag v-if="props.disabled || props.envVar.disabled" color="default" style="margin-left: 8px;">
+                    禁用
+                </a-tag>
                 <div class="card-actions">
                     <a-button v-if="isSensitiveField" size="small" type="link" @click="showFullValue = !showFullValue"
                         :title="showFullValue ? '隐藏值' : '显示完整值'">
@@ -147,6 +153,10 @@ const props = defineProps({
     sensitiveKeywords: {
         type: Array,
         default: () => ['key', 'token', 'password', 'secret', 'credential', 'auth', 'apikey', 'api_key']
+    },
+    disabled: {
+        type: Boolean,
+        default: false
     }
 });
 
@@ -646,6 +656,26 @@ function removeDuplicates() {
 
 .path-edit-item :deep(.ant-input) {
     flex: 1;
+}
+
+/* 禁用变量样式 */
+.disabled-card {
+    opacity: 0.6;
+    border-color: var(--ant-color-border-secondary);
+    background-color: var(--ant-color-fill-quaternary);
+}
+
+.disabled-card :deep(.ant-card-head) {
+    background-color: var(--ant-color-fill-tertiary);
+}
+
+.disabled-text {
+    color: var(--ant-color-text-tertiary);
+    text-decoration: line-through;
+}
+
+.disabled-card .var-value {
+    color: var(--ant-color-text-tertiary);
 }
 </style>
 

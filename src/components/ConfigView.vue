@@ -10,6 +10,7 @@ const settingsStore = useSettingsStore();
 
 // 普通变量备用值（与 HomeView 保持一致）
 const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
+const DISABLED_VARS_KEY = 'env-manager-disabled-vars-v1';
 
 const systemVars = ref([]);
 const userVars = ref([]);
@@ -70,7 +71,7 @@ const exportConfig = () => {
         const fileName = `env-manager-${timestamp}.json`;
 
         const configData = {
-            version: '1.1.0',
+            version: '1.2.0',
             exportTime: beijingTime.toISOString(),
             settings: {
                 theme: settingsStore.theme.value,
@@ -78,6 +79,7 @@ const exportConfig = () => {
                 sensitiveKeywords: settingsStore.sensitiveKeywords.value
             },
             var_alternatives: getData(ALT_VALUES_KEY, { system: {}, user: {} }),
+            disabled_vars: getData(DISABLED_VARS_KEY, { system: {}, user: {} }),
             env_vars: {
                 system_vars: systemVars.value,
                 user_vars: userVars.value
@@ -135,6 +137,34 @@ const importConfig = () => {
                             user: a.user && typeof a.user === 'object' ? a.user : {}
                         };
                         setData(ALT_VALUES_KEY, safe);
+                    }
+
+                    // 导入禁用变量
+                    if (config.disabled_vars && typeof config.disabled_vars === 'object') {
+                        const d = config.disabled_vars;
+                        const safeDisabled = {
+                            system: d.system && typeof d.system === 'object' ? d.system : {},
+                            user: d.user && typeof d.user === 'object' ? d.user : {}
+                        };
+                        setData(DISABLED_VARS_KEY, safeDisabled);
+
+                        // 确保禁用变量从注册表中删除
+                        for (const [name, info] of Object.entries(safeDisabled.system)) {
+                            if (isAdmin.value) {
+                                try {
+                                    await window.services.deleteEnvVar(name, true);
+                                } catch (err) {
+                                    // 忽略删除失败（可能已不存在）
+                                }
+                            }
+                        }
+                        for (const [name, info] of Object.entries(safeDisabled.user)) {
+                            try {
+                                await window.services.deleteEnvVar(name, false);
+                            } catch (err) {
+                                // 忽略删除失败（可能已不存在）
+                            }
+                        }
                     }
 
                     // 导入环境变量
