@@ -15,6 +15,19 @@ const theme = computed({
     set: (val) => { settingsStore.theme.value = val }
 });
 
+const sensitiveFieldsEnabled = computed({
+    get: () => settingsStore.sensitiveFieldsEnabled.value,
+    set: (val) => { settingsStore.sensitiveFieldsEnabled.value = val }
+});
+
+const sensitiveKeywords = computed({
+    get: () => settingsStore.sensitiveKeywords.value,
+    set: (val) => { settingsStore.sensitiveKeywords.value = val }
+});
+
+// 临时输入框
+const newKeyword = ref('');
+
 // 主题选项
 const themeOptions = [
     { label: '跟随系统', value: 'system' },
@@ -137,6 +150,29 @@ const importConfig = () => {
     });
 };
 
+// 添加敏感关键词
+const addSensitiveKeyword = () => {
+    const keyword = newKeyword.value.trim().toLowerCase();
+    if (!keyword) {
+        message.warning('请输入关键词');
+        return;
+    }
+    if (sensitiveKeywords.value.includes(keyword)) {
+        message.warning('该关键词已存在');
+        return;
+    }
+    sensitiveKeywords.value = [...sensitiveKeywords.value, keyword];
+    newKeyword.value = '';
+    message.success('关键词已添加');
+};
+
+// 删除敏感关键词
+const removeSensitiveKeyword = (index) => {
+    const keyword = sensitiveKeywords.value[index];
+    sensitiveKeywords.value = sensitiveKeywords.value.filter((_, i) => i !== index);
+    message.success(`已删除关键词: ${keyword}`);
+};
+
 onMounted(() => {
     loadEnvVars();
 });
@@ -155,6 +191,32 @@ onMounted(() => {
                         {{ option.label }}
                     </a-radio-button>
                 </a-radio-group>
+            </div>
+        </div>
+
+        <div class="config-section">
+            <h3>敏感字段保护</h3>
+            <div class="config-row">
+                <a-typography-text style="margin-right: 10px;">启用敏感字段隐藏:</a-typography-text>
+                <a-switch v-model:checked="sensitiveFieldsEnabled" />
+                <a-typography-text style="margin-left: 10px; font-size: 12px; color: var(--ant-color-text-secondary);">
+                    当变量名包含配置的关键词时，隐藏值的大部分内容（显示前 1/2）
+                </a-typography-text>
+            </div>
+
+            <div v-if="sensitiveFieldsEnabled" style="margin-top: 16px;">
+                <a-typography-text style="display: block; margin-bottom: 8px;">敏感关键词列表:</a-typography-text>
+                <div style="margin-bottom: 12px; display: flex; gap: 8px;">
+                    <a-input v-model:value="newKeyword" placeholder="输入关键词（如：password、secret、token）" size="small"
+                        @keydown.enter="addSensitiveKeyword" style="flex: 1; max-width: 300px;" />
+                    <a-button type="primary" size="small" @click="addSensitiveKeyword">添加</a-button>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <a-tag v-for="(keyword, index) in sensitiveKeywords" :key="index" closable
+                        @close="removeSensitiveKeyword(index)" color="blue">
+                        {{ keyword }}
+                    </a-tag>
+                </div>
             </div>
         </div>
 

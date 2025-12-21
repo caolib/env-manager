@@ -6,7 +6,9 @@ const SETTINGS_KEY = 'utools-plugin-template-settings'
 
 // 默认设置值
 const defaultSettings = {
-    theme: 'system'
+    theme: 'system',
+    sensitiveFieldsEnabled: true,
+    sensitiveKeywords: ['key', 'token', 'password', 'secret', 'credential', 'auth', 'apikey', 'api_key']
 }
 
 // 从 dbStorage 加载设置
@@ -41,12 +43,28 @@ export function useSettingsStore() {
         set: (val) => { settings.value.theme = val }
     })
 
+    const sensitiveFieldsEnabled = computed({
+        get: () => settings.value.sensitiveFieldsEnabled,
+        set: (val) => { settings.value.sensitiveFieldsEnabled = val }
+    })
+
+    const sensitiveKeywords = computed({
+        get: () => settings.value.sensitiveKeywords || [],
+        set: (val) => { settings.value.sensitiveKeywords = val }
+    })
+
     const setTheme = (theme) => { settings.value.theme = theme }
+    const setSensitiveFieldsEnabled = (enabled) => { settings.value.sensitiveFieldsEnabled = enabled }
+    const setSensitiveKeywords = (keywords) => { settings.value.sensitiveKeywords = keywords }
     const resetToDefault = () => { settings.value = { ...defaultSettings } }
 
     return {
         theme,
         setTheme,
+        sensitiveFieldsEnabled,
+        setSensitiveFieldsEnabled,
+        sensitiveKeywords,
+        setSensitiveKeywords,
         resetToDefault
     }
 }

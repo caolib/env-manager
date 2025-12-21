@@ -53,7 +53,9 @@
           </template>
           <div class="vars-container">
             <EnvVarCard v-for="row in filteredSystemVars" :key="row.name" :env-var="row" :highlight="searchKeyword"
-              :is-readonly="!isAdmin" @edit="(row) => editVar(row, 'system')"
+              :is-readonly="!isAdmin" :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
+              :sensitive-keywords="settingsStore.sensitiveKeywords.value"
+              @edit="(row) => editVar(row, 'system')"
               @delete="(row) => deleteVar(row, 'system')" />
           </div>
         </a-collapse-panel>
@@ -75,6 +77,8 @@
           </template>
           <div class="vars-container">
             <EnvVarCard v-for="row in filteredUserVars" :key="row.name" :env-var="row" :highlight="searchKeyword"
+              :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
+              :sensitive-keywords="settingsStore.sensitiveKeywords.value"
               @edit="(row) => editVar(row, 'user')" @delete="(row) => deleteVar(row, 'user')" />
           </div>
         </a-collapse-panel>
@@ -160,12 +164,28 @@ const filteredUserVars = computed(() => {
 
 // 过滤函数
 function filterVars(vars) {
-  if (!searchKeyword.value) return vars;
+  let filtered = vars;
+  if (searchKeyword.value) {
+    const keyword = searchKeyword.value.toLowerCase();
+    filtered = vars.filter(v => {
+      return v.name.toLowerCase().includes(keyword) || v.value.toLowerCase().includes(keyword);
+    });
+  }
 
-  const keyword = searchKeyword.value.toLowerCase();
-  return vars.filter(v => {
-    return v.name.toLowerCase().includes(keyword) || v.value.toLowerCase().includes(keyword);
+  // 将 path 变量排在最后
+  return filtered.sort((a, b) => {
+    const aIsPath = isPathVar(a);
+    const bIsPath = isPathVar(b);
+    if (aIsPath === bIsPath) return 0;
+    return aIsPath ? 1 : -1;
   });
+}
+
+// 判断是否为 path 变量（分号分隔的多路径）
+function isPathVar(envVar) {
+  const value = envVar.value?.trim();
+  if (!value) return false;
+  return value.includes(';') && value.split(';').filter(Boolean).length > 1;
 }
 
 
@@ -305,20 +325,15 @@ function showAddUserDialog() {
 }
 
 // 编辑变量
-async function editVar(row, scope) {
-  // 直接保存,不弹出对话框
-  try {
-    await window.services.setEnvVar(
-      row.name,
-      row.value,
-      scope === 'system'
-    );
-    message.success(`变量 "${row.name}" 更新成功`);
-    await loadEnvVars();
-  } catch (error) {
-    message.error(`更新失败: ${error.message}`);
-    console.error('Error saving env var:', error);
-  }
+function editVar(row, scope) {
+  formData.value = {
+    name: row.name,
+    value: row.value,
+    scope: scope
+  };
+  originalVarName.value = row.name;
+  editMode.value = true;
+  showDialog.value = true;
 }
 
 // 取消编辑

@@ -1,10 +1,15 @@
 <template>
-    <a-card size="small" class="env-var-card">
+    <a-card size="small" class="env-var-card" :class="{ 'path-card': isSemicolonSeparatedValue }">
         <template #title>
             <div class="card-header">
                 <span class="var-name clickable" v-html="renderName(envVar.name)" @click="copyKey"
                     title="点击复制变量名"></span>
                 <div class="card-actions">
+                    <a-button v-if="isSensitiveField" size="small" type="link" @click="showFullValue = !showFullValue"
+                        :title="showFullValue ? '隐藏值' : '显示完整值'">
+                        <EyeOutlined v-if="showFullValue" />
+                        <EyeInvisibleOutlined v-else />
+                    </a-button>
                     <a-button size="small" type="link" @click="copyAll" title="复制 KEY=VALUE">
                         <CopyOutlined />
                     </a-button>
@@ -72,7 +77,7 @@
             <!-- 普通变量显示 -->
             <template v-else>
                 <div class="normal-value-wrapper">
-                    <div class="normal-value clickable" v-html="renderValue(envVar.value)" @click="copyValue"
+                    <div class="normal-value clickable" v-html="renderValue(displayValue)" @click="copyValue"
                         title="点击复制变量值"></div>
                     <span v-if="normalPathCheckResult === false" class="path-status path-not-exist"
                         title="路径不存在">✗</span>
@@ -85,7 +90,7 @@
 </template>
 
 <script setup>
-import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined } from '@ant-design/icons-vue';
+import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons-vue';
 import { computed, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { h } from 'vue';
@@ -134,6 +139,14 @@ const props = defineProps({
     isReadonly: {
         type: Boolean,
         default: false
+    },
+    sensitiveFieldsEnabled: {
+        type: Boolean,
+        default: true
+    },
+    sensitiveKeywords: {
+        type: Array,
+        default: () => ['key', 'token', 'password', 'secret', 'credential', 'auth', 'apikey', 'api_key']
     }
 });
 
@@ -171,6 +184,30 @@ const isSemicolonSeparatedValue = computed(() => {
 const editingPath = ref(false);
 const editList = ref([]);
 const isDirty = ref(false);
+
+// 敏感信息相关
+const showFullValue = ref(false);
+
+// 检查变量是否为敏感字段
+const isSensitiveField = computed(() => {
+    if (!props.sensitiveFieldsEnabled) return false;
+    const varNameLower = props.envVar.name.toLowerCase();
+    return props.sensitiveKeywords.some(keyword => varNameLower.includes(keyword.toLowerCase()));
+});
+
+// 获取显示的值
+const displayValue = computed(() => {
+    if (!isSensitiveField.value || showFullValue.value) {
+        return props.envVar.value;
+    }
+    // 隐藏敏感信息：显示前 1/2，后面用省略号
+    const value = props.envVar.value || '';
+    if (value.length <= 10) {
+        return value;
+    }
+    const visibleLength = Math.ceil(value.length / 2);
+    return value.substring(0, visibleLength) + '...';
+});
 
 // 路径检测结果缓存
 const pathCheckResults = ref({});
@@ -476,6 +513,11 @@ function removeDuplicates() {
 .env-var-card {
     width: fit-content;
     height: fit-content;
+    border: 2px solid var(--blue);
+}
+
+:deep(.ant-card-head) {
+    padding-right: 0;
 }
 
 .card-header {
@@ -488,6 +530,11 @@ function removeDuplicates() {
     font-weight: 600;
     font-size: 14px;
     word-break: break-word;
+    margin-right: 10px;
+}
+
+.path-card .var-name {
+    color: green;
 }
 
 .clickable {
@@ -508,6 +555,10 @@ function removeDuplicates() {
 
 .card-actions {
     display: flex;
+    gap: 4px;
+    padding: 4px 8px;
+    background-color: rgba(0, 0, 0, 0.03);
+    border-radius: 4px;
 }
 
 .var-value {
@@ -517,7 +568,7 @@ function removeDuplicates() {
 
 .normal-value {
     white-space: pre-wrap;
-    padding: 8px 12px;
+    padding: 0;
     border-radius: 4px;
     border: 1px solid var(--ant-color-border);
 }
