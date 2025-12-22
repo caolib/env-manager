@@ -1,8 +1,18 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { exec, execFileSync } = require('node:child_process')
-const validator = require('validator')
-const { shell } = require('electron')
+
+// 内联 URL 验证函数，避免依赖 validator 包
+function isValidURL(str) {
+  if (!str || typeof str !== 'string') return false
+  try {
+    const url = new URL(str)
+    // 只允许 http 和 https 协议
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch (e) {
+    return false
+  }
+}
 
 function getRegExePath() {
   const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || 'C:\\Windows'
@@ -436,12 +446,8 @@ window.services = {
     if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
       return false
     }
-    // 使用 validator 的 isURL 函数进行验证
-    return validator.isURL(trimmed, {
-      protocols: ['http', 'https'],
-      require_protocol: true,
-      require_valid_protocol: true
-    })
+    // 使用内联的 URL 验证函数
+    return isValidURL(trimmed)
   },
 
   /**
@@ -452,7 +458,8 @@ window.services = {
       if (!this.isURL(url)) {
         throw new Error('无效的 URL')
       }
-      shell.openExternal(url.trim())
+      // 使用 uTools 原生 API，在开发和打包环境中都能工作
+      window.utools.shellOpenExternal(url.trim())
       return { success: true }
     } catch (error) {
       throw new Error('打开链接失败: ' + error.message)
