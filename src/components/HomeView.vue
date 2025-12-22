@@ -10,6 +10,11 @@
         <a-button @click="checkAllPaths" size="small" :loading="pathChecking">
           路径检测
         </a-button>
+        <a-button @click="toggleLayoutMode" size="small"
+          :title="settingsStore.layoutMode.value === 'card' ? '切换到表格模式' : '切换到卡片模式'">
+          <AppstoreOutlined v-if="settingsStore.layoutMode.value === 'card'" />
+          <UnorderedListOutlined v-else />
+        </a-button>
         <a-tooltip v-if="!isAdmin" placement="bottom">
           <template #title>
             <div style="max-width: 280px;">
@@ -51,12 +56,67 @@
               </a-button>
             </div>
           </template>
-          <div class="vars-container">
+
+          <!-- 卡片模式 -->
+          <div v-if="settingsStore.layoutMode.value === 'card'" class="vars-container">
             <EnvVarCard v-for="row in filteredSystemVars" :key="row.name" :env-var="row" :highlight="searchKeyword"
               :disabled="row.disabled" :is-readonly="!isAdmin"
               :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
               :sensitive-keywords="settingsStore.sensitiveKeywords.value" @edit="(row) => editVar(row, 'system')"
               @delete="(row) => deleteVar(row, 'system')" />
+          </div>
+
+          <!-- 表格模式 -->
+          <div v-else class="table-container">
+            <a-table :dataSource="filteredSystemVars" :columns="tableColumns" :pagination="false" size="small"
+              :rowKey="(record) => record.name" :scroll="{ x: 'max-content' }">
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'name'">
+                  <span v-html="renderHighlight(record.name)" class="clickable" @click="copyText(record.name)"
+                    title="点击复制"></span>
+                  <a-tag v-if="record.disabled" color="default" style="margin-left: 8px;">禁用</a-tag>
+                </template>
+                <template v-else-if="column.key === 'value'">
+                  <span v-html="renderHighlight(renderValue(record))" class="clickable" @click="copyText(record.value)"
+                    title="点击复制"></span>
+                </template>
+                <template v-else-if="column.key === 'actions'">
+                  <a-space :size="4">
+                    <a-button v-if="isValidPath(record.value)" size="small" type="link" @click="openPath(record.value)"
+                      title="打开文件/文件夹">
+                      <FolderOpenOutlined />
+                    </a-button>
+                    <a-button v-if="isValidURL(record.value)" size="small" type="link" @click="openURL(record.value)"
+                      title="在浏览器中打开">
+                      <LinkOutlined />
+                    </a-button>
+                    <a-button size="small" type="link" @click="copyText(`${record.name}=${record.value}`)"
+                      title="复制 KEY=VALUE">
+                      <CopyOutlined />
+                    </a-button>
+                    <a-tooltip v-if="!isAdmin" title="需要管理员权限">
+                      <a-button size="small" type="link" :disabled="true">
+                        <EditOutlined />
+                      </a-button>
+                    </a-tooltip>
+                    <a-button v-else size="small" type="link" @click="editVar(record, 'system')">
+                      <EditOutlined />
+                    </a-button>
+                    <a-popconfirm v-if="isAdmin" title="确定要删除该变量吗？" ok-text="确定" cancel-text="取消"
+                      @confirm="deleteVar(record, 'system')">
+                      <a-button size="small" type="link" danger>
+                        <DeleteOutlined />
+                      </a-button>
+                    </a-popconfirm>
+                    <a-tooltip v-else title="需要管理员权限">
+                      <a-button size="small" type="link" danger :disabled="true">
+                        <DeleteOutlined />
+                      </a-button>
+                    </a-tooltip>
+                  </a-space>
+                </template>
+              </template>
+            </a-table>
           </div>
         </a-collapse-panel>
 
@@ -75,11 +135,55 @@
               </a-button>
             </div>
           </template>
-          <div class="vars-container">
+
+          <!-- 卡片模式 -->
+          <div v-if="settingsStore.layoutMode.value === 'card'" class="vars-container">
             <EnvVarCard v-for="row in filteredUserVars" :key="row.name" :env-var="row" :highlight="searchKeyword"
               :disabled="row.disabled" :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
               :sensitive-keywords="settingsStore.sensitiveKeywords.value" @edit="(row) => editVar(row, 'user')"
               @delete="(row) => deleteVar(row, 'user')" />
+          </div>
+
+          <!-- 表格模式 -->
+          <div v-else class="table-container">
+            <a-table :dataSource="filteredUserVars" :columns="tableColumns" :pagination="false" size="small"
+              :rowKey="(record) => record.name" :scroll="{ x: 'max-content' }">
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'name'">
+                  <span v-html="renderHighlight(record.name)" class="clickable" @click="copyText(record.name)"
+                    title="点击复制"></span>
+                  <a-tag v-if="record.disabled" color="default" style="margin-left: 8px;">禁用</a-tag>
+                </template>
+                <template v-else-if="column.key === 'value'">
+                  <span v-html="renderHighlight(renderValue(record))" class="clickable" @click="copyText(record.value)"
+                    title="点击复制"></span>
+                </template>
+                <template v-else-if="column.key === 'actions'">
+                  <a-space :size="4">
+                    <a-button v-if="isValidPath(record.value)" size="small" type="link" @click="openPath(record.value)"
+                      title="打开文件/文件夹">
+                      <FolderOpenOutlined />
+                    </a-button>
+                    <a-button v-if="isValidURL(record.value)" size="small" type="link" @click="openURL(record.value)"
+                      title="在浏览器中打开">
+                      <LinkOutlined />
+                    </a-button>
+                    <a-button size="small" type="link" @click="copyText(`${record.name}=${record.value}`)"
+                      title="复制 KEY=VALUE">
+                      <CopyOutlined />
+                    </a-button>
+                    <a-button size="small" type="link" @click="editVar(record, 'user')">
+                      <EditOutlined />
+                    </a-button>
+                    <a-popconfirm title="确定要删除该变量吗？" ok-text="确定" cancel-text="取消" @confirm="deleteVar(record, 'user')">
+                      <a-button size="small" type="link" danger>
+                        <DeleteOutlined />
+                      </a-button>
+                    </a-popconfirm>
+                  </a-space>
+                </template>
+              </template>
+            </a-table>
           </div>
         </a-collapse-panel>
       </a-collapse>
@@ -171,7 +275,14 @@ import {
   UserOutlined,
   WarningOutlined,
   CheckOutlined,
-  QuestionCircleOutlined
+  QuestionCircleOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
+  CopyOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  FolderOpenOutlined,
+  LinkOutlined
 } from '@ant-design/icons-vue';
 import EnvVarCard from './EnvVarCard.vue';
 import { useSettingsStore } from '../stores/settings';
@@ -428,6 +539,147 @@ const filteredUserVars = computed(() => {
   return mergeAndFilterVars(userVars.value, 'user');
 });
 
+// 表格列定义
+const tableColumns = [
+  {
+    title: '变量名',
+    key: 'name',
+    dataIndex: 'name',
+    width: 200,
+    ellipsis: true,
+    sorter: (a, b) => a.name.localeCompare(b.name),
+    defaultSortOrder: 'ascend'
+  },
+  {
+    title: '值',
+    key: 'value',
+    dataIndex: 'value',
+    ellipsis: true,
+    width: '50vw'
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 200,
+    align: 'right',
+    fixed: 'right'
+  }
+];
+
+// HTML 转义函数
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// 高亮关键词函数
+function renderHighlight(text) {
+  if (!text) return '';
+  if (!searchKeyword.value) return escapeHtml(text);
+  const src = String(text);
+  const k = String(searchKeyword.value);
+  const srcLower = src.toLowerCase();
+  const kLower = k.toLowerCase();
+  let i = 0;
+  let from = 0;
+  let out = '';
+  while ((i = srcLower.indexOf(kLower, from)) !== -1) {
+    out += escapeHtml(src.slice(from, i));
+    const match = src.slice(i, i + k.length);
+    out += `<mark style="background-color: yellow; color: red; padding: 0;">${escapeHtml(match)}</mark>`;
+    from = i + k.length;
+  }
+  out += escapeHtml(src.slice(from));
+  return out;
+}
+
+// 渲染值（处理敏感信息）
+function renderValue(record) {
+  if (!record || !record.value) return '';
+  const value = record.value;
+
+  // 检查是否是敏感字段
+  if (settingsStore.sensitiveFieldsEnabled.value) {
+    const varNameLower = record.name.toLowerCase();
+    const keywords = settingsStore.sensitiveKeywords.value || [];
+    const isSensitive = keywords.some(keyword => varNameLower.includes(keyword.toLowerCase()));
+
+    if (isSensitive && value.length > 10) {
+      const visibleLength = Math.ceil(value.length / 2);
+      return value.substring(0, visibleLength) + '...';
+    }
+  }
+
+  return value;
+}
+
+// 复制文本到剪贴板
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    message.success('已复制到剪贴板');
+  }).catch(() => {
+    message.error('复制失败');
+  });
+}
+
+// 判断值是否为有效路径
+function isValidPath(value) {
+  if (!value || typeof value !== 'string') return false;
+  const trimmed = value.trim();
+
+  // 排除分号分隔的值（PATH变量）
+  if (trimmed.includes(';') && trimmed.split(';').filter(Boolean).length > 1) {
+    return false;
+  }
+
+  // 检查是否为路径格式
+  if (!window.services?.isPathLike(trimmed)) return false;
+
+  // 检查路径是否存在
+  return window.services.checkPathExists(trimmed);
+}
+
+// 判断值是否为有效URL
+function isValidURL(value) {
+  if (!value || typeof value !== 'string') return false;
+  const trimmed = value.trim();
+
+  // 排除分号分隔的值
+  if (trimmed.includes(';') && trimmed.split(';').filter(Boolean).length > 1) {
+    return false;
+  }
+
+  // 检查是否为有效URL
+  return window.services?.isURL(trimmed);
+}
+
+// 打开文件或文件夹
+function openPath(value) {
+  try {
+    if (!value) return;
+    window.services.shellOpenPath(value.trim());
+    message.success('已打开');
+  } catch (error) {
+    message.error(error.message || '打开失败');
+  }
+}
+
+// 打开URL
+function openURL(value) {
+  try {
+    if (!value) return;
+    window.services.openURL(value.trim());
+    message.success('已在浏览器中打开');
+  } catch (error) {
+    message.error(error.message || '打开链接失败');
+  }
+}
+
 // 合并并过滤变量（激活的 + 禁用的）
 function mergeAndFilterVars(activeVars, scope) {
   // 1. 从注册表获取的激活变量
@@ -507,6 +759,14 @@ function isPathVar(envVar) {
 }
 
 
+
+// 切换布局模式
+function toggleLayoutMode() {
+  const currentMode = settingsStore.layoutMode.value;
+  const newMode = currentMode === 'card' ? 'table' : 'card';
+  settingsStore.setLayoutMode(newMode);
+  message.success(`已切换到${newMode === 'card' ? '卡片' : '表格'}模式`);
+}
 
 // 加载环境变量
 async function loadEnvVars() {
@@ -648,6 +908,17 @@ function showAddUserDialog() {
 
 // 编辑变量
 function editVar(row, scope) {
+  // 如果是 PATH 变量（分号分隔的值）且当前在表格模式，切换到卡片模式
+  if (settingsStore.layoutMode.value === 'table' && isPathVarValue(row.value)) {
+    settingsStore.setLayoutMode('card');
+    message.info('PATH 变量已切换到卡片模式进行编辑');
+    // 等待下一帧，确保卡片已渲染
+    setTimeout(() => {
+      // 这里不需要额外操作，因为 EnvVarCard 会自动处理编辑
+    }, 100);
+    return;
+  }
+
   // 检查变量是否禁用
   const disabledInfo = getDisabledVar(scope, row.name);
 
@@ -971,6 +1242,20 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+}
+
+
+.table-container .clickable {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.table-container .clickable:hover {
+  opacity: 0.7;
+}
+
+.table-container .clickable:active {
+  opacity: 0.5;
 }
 
 :deep(.ant-collapse-header) {

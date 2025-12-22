@@ -8,7 +8,8 @@ const SETTINGS_KEY = 'utools-plugin-template-settings'
 const defaultSettings = {
     theme: 'system',
     sensitiveFieldsEnabled: true,
-    sensitiveKeywords: ['key', 'token', 'password', 'secret', 'credential', 'auth', 'apikey', 'api_key']
+    sensitiveKeywords: ['key', 'token', 'password', 'secret', 'credential', 'auth', 'apikey', 'api_key'],
+    layoutMode: 'card' // 'card' | 'table'
 }
 
 // 从 dbStorage 加载设置
@@ -53,9 +54,15 @@ export function useSettingsStore() {
         set: (val) => { settings.value.sensitiveKeywords = val }
     })
 
+    const layoutMode = computed({
+        get: () => settings.value.layoutMode || 'card',
+        set: (val) => { settings.value.layoutMode = val }
+    })
+
     const setTheme = (theme) => { settings.value.theme = theme }
     const setSensitiveFieldsEnabled = (enabled) => { settings.value.sensitiveFieldsEnabled = enabled }
     const setSensitiveKeywords = (keywords) => { settings.value.sensitiveKeywords = keywords }
+    const setLayoutMode = (mode) => { settings.value.layoutMode = mode }
     const resetToDefault = () => { settings.value = { ...defaultSettings } }
 
     return {
@@ -65,6 +72,8 @@ export function useSettingsStore() {
         setSensitiveFieldsEnabled,
         sensitiveKeywords,
         setSensitiveKeywords,
+        layoutMode,
+        setLayoutMode,
         resetToDefault
     }
 }

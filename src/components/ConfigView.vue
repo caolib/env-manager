@@ -273,7 +273,7 @@ onMounted(() => {
                 <a-typography-text style="margin-right: 10px;">启用敏感字段隐藏:</a-typography-text>
                 <a-switch v-model:checked="sensitiveFieldsEnabled" />
                 <a-typography-text style="margin-left: 10px; font-size: 12px; color: var(--ant-color-text-secondary);">
-                    当变量名包含配置的关键词时，隐藏值的大部分内容（显示前 1/2）
+                    当变量名包含配置的关键词时，隐藏值一半内容
                 </a-typography-text>
             </div>
 
