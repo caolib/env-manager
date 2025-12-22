@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, h, watch, computed } from 'vue';
+import { onMounted, ref, h, watch, computed, provide } from 'vue';
 import { ConfigProvider, Layout, Menu, theme as antTheme } from 'ant-design-vue';
 import { FileTextOutlined, SettingOutlined } from '@ant-design/icons-vue';
 import HomeView from './components/HomeView.vue';
@@ -22,6 +22,9 @@ const actualTheme = computed(() => {
   }
   return settingsStore.theme.value;
 });
+
+// 提供主题模式给子组件
+provide('themeMode', actualTheme);
 
 // Ant Design 主题配置
 const themeConfig = computed(() => {

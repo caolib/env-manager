@@ -103,9 +103,10 @@
 
 <script setup>
 import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined, EyeOutlined, EyeInvisibleOutlined, FolderOpenOutlined, LinkOutlined } from '@ant-design/icons-vue';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, provide, inject } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { h } from 'vue';
+import PathDiffModal from './PathDiffModal.vue';
 
 // 工具函数：HTML 转义
 function escapeHtml(str) {
@@ -167,6 +168,10 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['edit', 'delete']);
+
+// 注入主题模式，供 PathDiffModal 使用
+const themeMode = inject('themeMode', 'light');
+provide('themeMode', themeMode);
 
 // 渲染函数 - 默认搜索全部(变量名和值)
 function renderName(name) {
@@ -341,11 +346,6 @@ async function savePath() {
     const oldPaths = pathList.value;
     const newPaths = editList.value.filter(Boolean);
 
-    // 计算差异
-    const removed = oldPaths.filter(p => !newPaths.includes(p));
-    const added = newPaths.filter(p => !oldPaths.includes(p));
-    const unchanged = newPaths.filter(p => oldPaths.includes(p));
-
     // 显示对比并确认
     Modal.confirm({
         title: '确认保存修改',
@@ -353,80 +353,7 @@ async function savePath() {
         wrapClassName: 'full-screen-modal',
         style: { top: 0, paddingBottom: 0, maxWidth: '100%' },
         bodyStyle: { height: 'calc(100vh - 110px)', overflowY: 'auto' },
-        content: h('div', { style: { height: '100%' } }, [
-            h('div', { style: { display: 'flex', gap: '20px', height: '100%' } }, [
-                // 修改前
-                h('div', { style: { flex: 1, display: 'flex', flexDirection: 'column' } }, [
-                    h('h4', { style: { marginBottom: '8px', color: '#666' } }, '修改前:'),
-                    h('div', {
-                        style: {
-                            flex: 1,
-                            border: '1px solid #d9d9d9',
-                            borderRadius: '4px',
-                            padding: '12px',
-                            backgroundColor: '#fafafa',
-                            overflowY: 'auto'
-                        }
-                    }, [
-                        h('ul', { style: { margin: 0, paddingLeft: '20px', listStyle: 'disc' } },
-                            oldPaths.map(path =>
-                                h('li', {
-                                    style: {
-                                        marginBottom: '4px',
-                                        color: removed.includes(path) ? '#ff4d4f' : '#000',
-                                        textDecoration: removed.includes(path) ? 'line-through' : 'none',
-                                        opacity: removed.includes(path) ? 0.6 : 1
-                                    }
-                                }, path)
-                            )
-                        )
-                    ])
-                ]),
-                // 修改后
-                h('div', { style: { flex: 1, display: 'flex', flexDirection: 'column' } }, [
-                    h('h4', { style: { marginBottom: '8px', color: '#666' } }, '修改后:'),
-                    h('div', {
-                        style: {
-                            flex: 1,
-                            border: '1px solid #d9d9d9',
-                            borderRadius: '4px',
-                            padding: '12px',
-                            backgroundColor: '#fafafa',
-                            overflowY: 'auto'
-                        }
-                    }, [
-                        h('ul', { style: { margin: 0, paddingLeft: '20px', listStyle: 'disc' } },
-                            newPaths.map(path =>
-                                h('li', {
-                                    style: {
-                                        marginBottom: '4px',
-                                        color: added.includes(path) ? '#52c41a' : '#000',
-                                        fontWeight: added.includes(path) ? 'bold' : 'normal',
-                                        backgroundColor: added.includes(path) ? '#f6ffed' : 'transparent',
-                                        padding: added.includes(path) ? '2px 4px' : '0',
-                                        borderRadius: '2px'
-                                    }
-                                }, path)
-                            )
-                        )
-                    ])
-                ])
-            ]),
-            // 统计信息
-            (added.length > 0 || removed.length > 0) ? h('div', {
-                style: {
-                    marginTop: '16px',
-                    padding: '8px 12px',
-                    backgroundColor: '#e6f7ff',
-                    borderRadius: '4px',
-                    fontSize: '13px'
-                }
-            }, [
-                added.length > 0 ? h('div', { style: { color: '#52c41a' } }, `✓ 新增 ${added.length} 项`) : null,
-                removed.length > 0 ? h('div', { style: { color: '#ff4d4f' } }, `✗ 删除 ${removed.length} 项`) : null,
-                h('div', { style: { color: '#666' } }, `= 保持 ${unchanged.length} 项不变`)
-            ]) : null
-        ]),
+        content: h(PathDiffModal, { oldPaths, newPaths }),
         okText: '确认保存',
         cancelText: '取消',
         onOk() {
