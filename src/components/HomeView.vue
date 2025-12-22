@@ -191,10 +191,10 @@
 
     <!-- 添加/编辑对话框 -->
     <a-modal v-model:open="showDialog" :title="editMode ? '编辑环境变量' : '添加环境变量'" @ok="handleSubmit" @cancel="cancelEdit"
-      :confirmLoading="submitting" width="600px">
-      <a-form :model="formData" layout="vertical">
+      :confirmLoading="submitting" width="700px">
+      <a-form :model="formData" layout="horizontal" :label-col="{ style: { width: 'auto' } }">
         <!-- 启用/禁用开关 -->
-        <a-form-item>
+        <a-form-item :label-col="{ span: 0 }" :wrapper-col="{ span: 24 }">
           <div
             style="display: flex; align-items: center; gap: 12px; padding: 8px; background-color: var(--ant-color-fill-quaternary); border-radius: 4px;">
             <a-switch v-model:checked="formEnabled" checked-children="启用" un-checked-children="禁用" />
@@ -209,11 +209,6 @@
           </div>
         </a-form-item>
 
-        <!-- KV 格式快捷输入 -->
-        <a-form-item label="输入键值对 (key=value)">
-          <a-input v-model:value="kvInput" placeholder="例如: MY_VAR=value" @input="parseKVInput" />
-        </a-form-item>
-
         <a-form-item label="变量名" required>
           <a-input v-model:value="formData.name" placeholder="输入变量名" />
         </a-form-item>
@@ -222,42 +217,61 @@
           <a-textarea v-model:value="formData.value" placeholder="输入变量值" :auto-size="{ minRows: 1, maxRows: 8 }" />
         </a-form-item>
 
-        <!-- 普通变量：备用值管理（Path 变量不显示） -->
-        <div v-if="showAlternativesSection" style="margin-top: 12px;">
-          <a-typography-text style="display:block; margin-bottom: 8px;">备用值（可选）</a-typography-text>
+        <!-- KV 格式快捷输入 -->
+        <a-form-item label="键值对">
+          <a-input v-model:value="kvInput" placeholder="输入K=V快速填充上面的变量" @input="parseKVInput" />
+        </a-form-item>
 
-          <div style="display:flex; gap: 8px; align-items: flex-start;">
+        <!-- 普通变量：备用值管理（Path 变量不显示） -->
+        <a-form-item v-if="showAlternativesSection" label="备用值">
+          <div style="display:flex; gap: 8px; align-items: flex-start; margin-bottom: 8px;">
             <a-textarea v-model:value="altValueInput" placeholder="输入一个备用值" :auto-size="{ minRows: 1, maxRows: 4 }"
               style="flex: 1;" />
-            <a-input v-model:value="altNoteInput" placeholder="备注（可不填）" style="width: 160px;" />
+            <a-input v-model:value="altNoteInput" placeholder="备注（选填）" style="width: 160px;" />
             <a-button type="primary" @click="addAlternative" :disabled="!canAddAlternative">添加</a-button>
           </div>
 
-          <div v-if="currentAlternatives.length"
-            style="margin-top: 10px; border: 1px solid var(--ant-color-border); border-radius: 6px; padding: 8px;">
-            <div v-for="(item, idx) in currentAlternatives" :key="idx"
+          <div v-if="shouldShowAlternativesList"
+            style="border: 1px solid var(--ant-color-border); border-radius: 6px; padding: 8px;">
+            <div v-for="(item, idx) in displayAlternatives" :key="idx"
               style="display:flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--ant-color-split);"
-              :style="idx === currentAlternatives.length - 1 ? { borderBottom: 'none' } : {}">
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 12px; color: var(--ant-color-text-secondary);" v-if="item.note">{{ item.note }}
-                </div>
-                <div style="word-break: break-all; font-size: 12px;">
+              :style="idx === displayAlternatives.length - 1 ? { borderBottom: 'none' } : {}">
+              <div style="flex: 1; min-width: 0; display: flex; gap: 8px; align-items: center;">
+                <div style="word-break: break-all; font-size: 12px; flex: 1;">
                   {{ item.value }}
                 </div>
+                <!-- 编辑状态：显示输入框 -->
+                <a-input v-if="editingNoteIndex === idx" v-model:value="editingNoteValue" size="small"
+                  placeholder="输入备注（回车保存，ESC取消）" @keydown="handleNoteKeydown($event, idx)" @blur="saveNoteEdit(idx)"
+                  :autofocus="true" style="width: 150px; height: 24px; font-size: 12px;" />
+                <!-- 非编辑状态：显示备注标签或添加按钮 -->
+                <template v-else>
+                  <a-tag v-if="item.note" :closable="true" @close.prevent="updateAlternativeNote(idx, '')"
+                    @click="editAlternativeNote(idx, item.note)"
+                    style="cursor: pointer; margin: 0; height: 24px; line-height: 22px;">
+                    {{ item.note }}
+                  </a-tag>
+                  <a-button v-else size="small" @click="editAlternativeNote(idx, '')"
+                    style="height: 24px; padding: 0 8px;">
+                    添加备注
+                  </a-button>
+                </template>
               </div>
-              <a-space>
-                <a-button size="small" @click="applyAlternative(item.value)">切换</a-button>
+              <a-space :size="4">
+                <!-- 当前使用中的值显示标签，非当前值显示切换按钮 -->
+                <a-tag v-if="item.isCurrentValue" color="success"
+                  style="margin: 0; height: 24px; line-height: 22px;">使用中</a-tag>
+                <a-button v-else size="small" @click="applyAlternative(item.value)"
+                  style="height: 24px; padding: 0 8px;">切换</a-button>
                 <a-popconfirm title="删除该备用值？" ok-text="删除" cancel-text="取消" @confirm="removeAlternative(idx)">
-                  <a-button size="small" danger>删除</a-button>
+                  <a-button size="small" danger style="height: 24px; padding: 0 8px;" title="删除">
+                    <DeleteOutlined />
+                  </a-button>
                 </a-popconfirm>
               </a-space>
             </div>
           </div>
-
-          <div v-else style="margin-top: 8px; font-size: 12px; color: var(--ant-color-text-secondary);">
-            还没有备用值。你可以添加多个备用值进行切换。
-          </div>
-        </div>
+        </a-form-item>
 
         <a-alert v-if="formData.scope === 'system'" message="修改系统环境变量需要管理员权限" type="warning" show-icon />
       </a-form>
@@ -266,7 +280,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, h } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import {
   PlusOutlined,
@@ -472,6 +486,8 @@ const formEnabled = computed({
 // 备用值 UI 状态
 const altValueInput = ref('');
 const altNoteInput = ref('');
+const editingNoteIndex = ref(-1);
+const editingNoteValue = ref('');
 
 // 判断是否为 path 变量（分号分隔的多路径）
 function isPathVarValue(value) {
@@ -482,12 +498,44 @@ function isPathVarValue(value) {
 
 const showAlternativesSection = computed(() => {
   // 仅对普通变量显示；Path 变量不显示
-  return !!formData.value.name?.trim() && !isPathVarValue(formData.value.value);
+  // 普通变量始终显示输入区域
+  if (!formData.value.name?.trim() || isPathVarValue(formData.value.value)) {
+    return false;
+  }
+  return true;
+});
+
+const shouldShowAlternativesList = computed(() => {
+  if (!formData.value.name?.trim()) return false;
+  const alternatives = getAlternatives(formData.value.scope, formData.value.name);
+  const currentValue = (formData.value.value ?? '').toString();
+
+  // 如果没有备用值，不显示列表
+  if (alternatives.length === 0) return false;
+
+  // 如果只有一个备用值且等于当前值，不显示列表
+  if (alternatives.length === 1 && alternatives[0].value === currentValue) {
+    return false;
+  }
+
+  // 其他情况显示列表
+  return true;
 });
 
 const currentAlternatives = computed(() => {
-  if (!showAlternativesSection.value) return [];
+  if (!formData.value.name?.trim()) return [];
   return getAlternatives(formData.value.scope, formData.value.name);
+});
+
+// 显示的备用值列表，标记当前使用中的值
+const displayAlternatives = computed(() => {
+  const alternatives = currentAlternatives.value;
+  const currentValue = (formData.value.value ?? '').toString();
+
+  return alternatives.map(item => ({
+    ...item,
+    isCurrentValue: item.value === currentValue
+  }));
 });
 
 const canAddAlternative = computed(() => {
@@ -522,13 +570,66 @@ function removeAlternative(index) {
 }
 
 function applyAlternative(value) {
-  // 切换前，先把当前值自动保存为一个备用值，避免“切换后原值丢失”
+  // 切换前，先把当前值自动保存为一个备用值，避免"切换后原值丢失"
   const currentValue = (formData.value.value ?? '').toString();
   if (currentValue && currentValue !== value) {
     ensureAlternativeExists(formData.value.scope, formData.value.name, currentValue);
   }
   formData.value.value = value;
 }
+
+// 编辑备用值备注 - 原地编辑
+function editAlternativeNote(index, currentNote) {
+  editingNoteIndex.value = index;
+  editingNoteValue.value = currentNote;
+}
+
+// 保存备注编辑
+function saveNoteEdit(index) {
+  // 如果已经退出编辑状态，直接返回，避免重复保存
+  if (editingNoteIndex.value === -1) return;
+
+  const newNote = editingNoteValue.value.trim();
+  updateAlternativeNote(index, newNote);
+  editingNoteIndex.value = -1;
+  editingNoteValue.value = '';
+}
+
+// 取消备注编辑
+function cancelNoteEdit() {
+  editingNoteIndex.value = -1;
+  editingNoteValue.value = '';
+}
+
+// 处理备注输入框按键
+function handleNoteKeydown(event, index) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    saveNoteEdit(index);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    cancelNoteEdit();
+  }
+}
+
+// 更新备用值备注
+function updateAlternativeNote(index, newNote) {
+  const name = formData.value.name?.trim();
+  if (!name) return;
+  const existing = getAlternatives(formData.value.scope, name);
+  if (index < 0 || index >= existing.length) return;
+
+  const updated = existing.map((item, i) => {
+    if (i === index) {
+      return { ...item, note: newNote };
+    }
+    return item;
+  });
+
+  setAlternatives(formData.value.scope, name, updated);
+  message.success(newNote ? '备注已更新' : '备注已删除');
+}
+
 
 // 计算属性：过滤后的变量
 const filteredSystemVars = computed(() => {
@@ -1138,7 +1239,6 @@ async function checkAllPaths() {
     }
 
     // 显示检测结果
-    const { h } = await import('vue');
     Modal.info({
       title: '全局路径检测结果',
       width: 700,
@@ -1264,5 +1364,9 @@ onMounted(() => {
 
 :deep(.ant-collapse-content-box) {
   padding: 0 16px !important;
+}
+
+:deep(.ant-card-body) {
+  padding-right: 0;
 }
 </style>
