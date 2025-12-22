@@ -25,8 +25,19 @@ const actualTheme = computed(() => {
 
 // Ant Design 主题配置
 const themeConfig = computed(() => {
+  if (actualTheme.value === 'dark') {
+    return {
+      algorithm: antTheme.darkAlgorithm,
+      token: {
+        // 深色主题下调整卡片背景色，让它更柔和
+        colorBgContainer: '#2A2A2A',  // 卡片背景色（默认是 #141414，太黑）
+        colorBgElevated: '#262626',   // 弹出层背景色
+        colorBgLayout: '#0d0d0d',     // 布局背景色
+      }
+    };
+  }
   return {
-    algorithm: actualTheme.value === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm
+    algorithm: antTheme.defaultAlgorithm
   };
 });
 

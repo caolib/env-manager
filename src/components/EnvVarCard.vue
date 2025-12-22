@@ -16,6 +16,12 @@
                         <EyeOutlined v-if="showFullValue" />
                         <EyeInvisibleOutlined v-else />
                     </a-button>
+                    <a-button v-if="isValidPath" size="small" type="link" @click="openPath" title="打开文件/文件夹">
+                        <FolderOpenOutlined />
+                    </a-button>
+                    <a-button v-if="isValidURL" size="small" type="link" @click="openURL" title="在浏览器中打开">
+                        <LinkOutlined />
+                    </a-button>
                     <a-button size="small" type="link" @click="copyAll" title="复制 KEY=VALUE">
                         <CopyOutlined />
                     </a-button>
@@ -96,7 +102,7 @@
 </template>
 
 <script setup>
-import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons-vue';
+import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined, EyeOutlined, EyeInvisibleOutlined, FolderOpenOutlined, LinkOutlined } from '@ant-design/icons-vue';
 import { computed, ref, watch } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { h } from 'vue';
@@ -223,6 +229,33 @@ const displayValue = computed(() => {
 const pathCheckResults = ref({});
 const normalPathCheckResult = ref(null);
 
+// 判断当前值是否为有效的文件或文件夹路径
+const isValidPath = computed(() => {
+    const value = props.envVar.value?.trim();
+    if (!value) return false;
+
+    // 对于分号分隔的值（PATH变量），不显示打开按钮
+    if (isSemicolonSeparatedValue.value) return false;
+
+    // 检查是否为路径格式
+    if (!window.services?.isPathLike(value)) return false;
+
+    // 检查路径是否存在
+    return window.services.checkPathExists(value);
+});
+
+// 判断当前值是否为有效的 URL
+const isValidURL = computed(() => {
+    const value = props.envVar.value?.trim();
+    if (!value) return false;
+
+    // 对于分号分隔的值，不显示打开按钮
+    if (isSemicolonSeparatedValue.value) return false;
+
+    // 检查是否为有效的 URL
+    return window.services?.isURL(value);
+});
+
 // 处理编辑按钮点击
 const handleEditClick = () => {
     if (isSemicolonSeparatedValue.value) {
@@ -258,6 +291,32 @@ const copyValue = () => {
     }).catch(() => {
         message.error('复制失败');
     });
+};
+
+// 打开文件或文件夹
+const openPath = () => {
+    try {
+        const value = props.envVar.value?.trim();
+        if (!value) return;
+
+        window.services.shellOpenPath(value);
+        message.success('已打开');
+    } catch (error) {
+        message.error(error.message || '打开失败');
+    }
+};
+
+// 打开 URL
+const openURL = () => {
+    try {
+        const value = props.envVar.value?.trim();
+        if (!value) return;
+
+        window.services.openURL(value);
+        message.success('已在浏览器中打开');
+    } catch (error) {
+        message.error(error.message || '打开链接失败');
+    }
 };
 
 function startEditPath() {
@@ -565,10 +624,14 @@ function removeDuplicates() {
 
 .card-actions {
     display: flex;
-    gap: 4px;
-    padding: 4px 8px;
     background-color: rgba(0, 0, 0, 0.03);
     border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.env-var-card:hover .card-actions {
+    opacity: 1;
 }
 
 .var-value {

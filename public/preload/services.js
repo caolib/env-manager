@@ -1,6 +1,8 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { exec, execFileSync } = require('node:child_process')
+const validator = require('validator')
+const { shell } = require('electron')
 
 function getRegExePath() {
   const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || 'C:\\Windows'
@@ -323,21 +325,18 @@ window.services = {
   },
 
   /**
-   * 检查路径是否存在(只检查目录,不检查文件)
+   * 检查路径是否存在(检查目录和文件)
    */
   checkPathExists: function (pathStr) {
     try {
       // 去除 file: 前缀
-      const cleanPath = pathStr.replace(/^file:/, '')
+      let cleanPath = pathStr.replace(/^file:/, '')
+
+      // 展开环境变量
+      cleanPath = this.expandEnvVars(cleanPath)
 
       // 检查路径是否存在
-      if (!fs.existsSync(cleanPath)) {
-        return false
-      }
-
-      // 只返回 true 如果是目录
-      const stat = fs.statSync(cleanPath)
-      return stat.isDirectory()
+      return fs.existsSync(cleanPath)
     } catch (error) {
       return false
     }
@@ -349,7 +348,10 @@ window.services = {
    */
   isDirectory: function (pathStr) {
     try {
-      const cleanPath = pathStr.replace(/^file:/, '')
+      let cleanPath = pathStr.replace(/^file:/, '')
+      // 展开环境变量
+      cleanPath = this.expandEnvVars(cleanPath)
+
       if (!fs.existsSync(cleanPath)) {
         return null // 路径不存在
       }
@@ -361,13 +363,99 @@ window.services = {
   },
 
   /**
+   * 展开路径中的环境变量
+   * 例如: %USERPROFILE%\.dotnet\tools -> C:\Users\username\.dotnet\tools
+   */
+  expandEnvVars: function (pathStr) {
+    if (!pathStr || typeof pathStr !== 'string') return pathStr
+
+    // 匹配 %VAR% 格式的环境变量
+    return pathStr.replace(/%([^%]+)%/g, function (match, varName) {
+      // 从 process.env 中获取环境变量值
+      return process.env[varName] || match
+    })
+  },
+
+  /**
    * 判断字符串是否为路径格式
    */
   isPathLike: function (str) {
     if (!str || typeof str !== 'string') return false
     // 去除 file: 前缀
     const cleanStr = str.replace(/^file:/, '')
-    // Windows路径模式: C:\... 或 \\... 或包含 \ 或 /
-    return /^[a-zA-Z]:[\\|/]/.test(cleanStr) || /^\\\\/.test(cleanStr) || cleanStr.includes('\\') || (cleanStr.includes('/') && !cleanStr.includes('://'))
+    // Windows路径模式: C:\... 或 \\... 或包含 \ 或 / 或 包含 %...%
+    return /^[a-zA-Z]:[\\|/]/.test(cleanStr) || /^\\\\/.test(cleanStr) || cleanStr.includes('\\') || (cleanStr.includes('/') && !cleanStr.includes('://')) || /%[^%]+%/.test(cleanStr)
+  },
+
+  /**
+   * 打开文件或文件夹
+   * 使用系统默认应用程序打开
+   */
+  shellOpenPath: function (pathStr) {
+    try {
+      let cleanPath = pathStr.replace(/^file:/, '')
+      // 展开环境变量
+      cleanPath = this.expandEnvVars(cleanPath)
+
+      if (!fs.existsSync(cleanPath)) {
+        throw new Error('路径不存在')
+      }
+      window.utools.shellOpenPath(cleanPath)
+      return { success: true }
+    } catch (error) {
+      throw new Error('打开失败: ' + error.message)
+    }
+  },
+
+  /**
+   * 在文件资源管理器中显示文件/文件夹
+   */
+  shellShowItemInFolder: function (pathStr) {
+    try {
+      let cleanPath = pathStr.replace(/^file:/, '')
+      // 展开环境变量
+      cleanPath = this.expandEnvVars(cleanPath)
+
+      if (!fs.existsSync(cleanPath)) {
+        throw new Error('路径不存在')
+      }
+      window.utools.shellShowItemInFolder(cleanPath)
+      return { success: true }
+    } catch (error) {
+      throw new Error('打开失败: ' + error.message)
+    }
+  },
+
+  /**
+   * 判断字符串是否为有效的 URL（http 或 https）
+   */
+  isURL: function (str) {
+    if (!str || typeof str !== 'string') return false
+    const trimmed = str.trim()
+    // 只检测 http 和 https 协议
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      return false
+    }
+    // 使用 validator 的 isURL 函数进行验证
+    return validator.isURL(trimmed, {
+      protocols: ['http', 'https'],
+      require_protocol: true,
+      require_valid_protocol: true
+    })
+  },
+
+  /**
+   * 使用系统默认浏览器打开 URL
+   */
+  openURL: function (url) {
+    try {
+      if (!this.isURL(url)) {
+        throw new Error('无效的 URL')
+      }
+      shell.openExternal(url.trim())
+      return { success: true }
+    } catch (error) {
+      throw new Error('打开链接失败: ' + error.message)
+    }
   }
 }
