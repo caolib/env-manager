@@ -79,6 +79,9 @@
                         <div v-for="(item, index) in editList" :key="index" class="path-edit-item">
                             <a-input v-model:value="editList[index]" style="width: 800px" placeholder="输入路径..."
                                 size="small" />
+                            <a-button size="small" type="link" @click="insertPathAfter(index)" title="在下方插入路径">
+                                <PlusOutlined />
+                            </a-button>
                             <a-button size="small" type="link" danger @click="removePathItem(index)">
                                 <DeleteOutlined />
                             </a-button>
@@ -370,6 +373,11 @@ function removePathItem(index) {
     isDirty.value = true;
 }
 
+function insertPathAfter(index) {
+    editList.value.splice(index + 1, 0, '');
+    isDirty.value = true;
+}
+
 // 监听外部 Path 变化
 watch(() => props.envVar.value, () => {
     if (editingPath.value) {
@@ -624,6 +632,7 @@ function removeDuplicates() {
 
 .path-edit-container {
     padding: 12px;
+    padding-right: 0;
     border-radius: 4px;
     border: 1px solid var(--ant-color-border);
 }
@@ -639,7 +648,6 @@ function removeDuplicates() {
 
 .path-edit-item {
     display: flex;
-    gap: 8px;
     margin-bottom: 8px;
     align-items: center;
 }

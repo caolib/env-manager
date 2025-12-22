@@ -1,13 +1,14 @@
 <template>
   <div class="diff-view">
-    <Table
-      :columns="columns"
-      :data-source="tableData"
-      :pagination="false"
-      size="small"
-      :scroll="{ x: 600, y: 400 }"
-      :bordered="true"
-    >
+    <!-- 控制按钮 -->
+    <div class="control-bar">
+      <Button :type="showUnchanged ? 'primary' : 'default'" size="small" @click="showUnchanged = !showUnchanged">
+        {{ showUnchanged ? '✓ 显示未改变' : '× 隐藏未改变' }}
+      </Button>
+    </div>
+
+    <Table :columns="columns" :data-source="tableData" :pagination="false" size="small" :scroll="{ x: 600, y: 500 }"
+      :bordered="true">
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'status'">
           <span v-if="record.status === 'removed'" style="color: #ff4d4f;">
@@ -47,8 +48,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
-import { Table, Divider } from 'ant-design-vue';
+import { computed, ref } from 'vue';
+import { Table, Divider, Button } from 'ant-design-vue';
 
 const props = defineProps({
   oldPaths: {
@@ -60,6 +61,9 @@ const props = defineProps({
     required: true
   }
 });
+
+// 控制是否显示未改变的项
+const showUnchanged = ref(false);
 
 // 计算差异
 const removed = computed(() => {
@@ -106,6 +110,12 @@ const tableData = computed(() => {
     const wasInOld = props.oldPaths.includes(path);
     const status = wasInOld ? 'unchanged' : 'added';
 
+    // 如果不显示未改变的项，则跳过
+    if (status === 'unchanged' && !showUnchanged.value) {
+      seen.add(path);
+      return;
+    }
+
     data.push({
       key: path,
       status,
@@ -135,6 +145,12 @@ const tableData = computed(() => {
   padding: 8px 0;
 }
 
+.control-bar {
+  margin-bottom: 12px;
+  display: flex;
+  gap: 8px;
+}
+
 .stats-info {
   margin-top: 8px;
 }
@@ -154,4 +170,3 @@ const tableData = computed(() => {
   padding: 8px !important;
 }
 </style>
-
