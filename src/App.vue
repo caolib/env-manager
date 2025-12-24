@@ -1,9 +1,10 @@
 <script setup>
 import { onMounted, ref, h, watch, computed, provide } from 'vue';
 import { ConfigProvider, Layout, Menu, theme as antTheme } from 'ant-design-vue';
-import { FileTextOutlined, SettingOutlined } from '@ant-design/icons-vue';
+import { FileTextOutlined, SettingOutlined, DeploymentUnitOutlined } from '@ant-design/icons-vue';
 import HomeView from './components/HomeView.vue';
 import ConfigView from './components/ConfigView.vue';
+import GroupView from './components/GroupView.vue';
 import { useSettingsStore } from './stores/settings';
 
 const { Header, Content } = Layout;
@@ -61,6 +62,11 @@ const menuItems = [
     label: '主页',
   },
   {
+    key: 'group',
+    icon: () => h(DeploymentUnitOutlined),
+    label: '变量组',
+  },
+  {
     key: 'config',
     icon: () => h(SettingOutlined),
     label: '配置',
@@ -115,6 +121,7 @@ const handleMenuClick = ({ key }) => {
       </Header>
       <Content style="background: transparent; padding: 16px;">
         <HomeView v-if="currentView[0] === 'home'" :enterAction="enterAction" />
+        <GroupView v-else-if="currentView[0] === 'group'" />
         <ConfigView v-else-if="currentView[0] === 'config'" />
       </Content>
     </Layout>

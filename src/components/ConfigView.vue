@@ -4,13 +4,16 @@ import { computed, ref, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { ExportOutlined, ImportOutlined } from '@ant-design/icons-vue';
 import { useSettingsStore } from '../stores/settings'
+import { useGroupsStore } from '../stores/groups'
 import { getData, setData } from '../utils/store'
 
 const settingsStore = useSettingsStore();
+const groupsStore = useGroupsStore();
 
 // 普通变量备用值（与 HomeView 保持一致）
 const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
 const DISABLED_VARS_KEY = 'env-manager-disabled-vars-v1';
+const GROUPS_KEY = 'env-manager-variable-groups';
 
 const systemVars = ref([]);
 const userVars = ref([]);
@@ -80,6 +83,7 @@ const exportConfig = () => {
             },
             var_alternatives: getData(ALT_VALUES_KEY, { system: {}, user: {} }),
             disabled_vars: getData(DISABLED_VARS_KEY, { system: {}, user: {} }),
+            groups: getData(GROUPS_KEY, []),
             env_vars: {
                 system_vars: systemVars.value,
                 user_vars: userVars.value
@@ -165,6 +169,12 @@ const importConfig = () => {
                                 // 忽略删除失败（可能已不存在）
                             }
                         }
+                    }
+
+                    // 导入变量组
+                    if (config.groups && Array.isArray(config.groups)) {
+                        setData(GROUPS_KEY, config.groups);
+                        groupsStore.reload();
                     }
 
                     // 导入环境变量

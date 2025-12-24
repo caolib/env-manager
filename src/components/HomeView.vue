@@ -300,6 +300,7 @@ import {
 } from '@ant-design/icons-vue';
 import EnvVarCard from './EnvVarCard.vue';
 import { useSettingsStore } from '../stores/settings';
+import { useAlternativesStore } from '../stores/alternatives';
 import { getData, setData } from '../utils/store';
 
 const props = defineProps({
@@ -310,60 +311,18 @@ const props = defineProps({
 });
 
 const settingsStore = useSettingsStore();
-
-// 普通变量：备用值（按 scope + name 存储到 dbStorage）
-const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
-const alternativesState = ref(loadAlternatives());
+const alternativesStore = useAlternativesStore();
 
 // 禁用变量存储
 const DISABLED_VARS_KEY = 'env-manager-disabled-vars-v1';
 const disabledVarsState = ref(loadDisabledVars());
-
-function loadAlternatives() {
-  const saved = getData(ALT_VALUES_KEY, null);
-  if (saved && typeof saved === 'object') {
-    return {
-      system: saved.system && typeof saved.system === 'object' ? saved.system : {},
-      user: saved.user && typeof saved.user === 'object' ? saved.user : {}
-    };
-  }
-  return { system: {}, user: {} };
-}
-
-function persistAlternatives() {
-  const serializableValue = JSON.parse(JSON.stringify(alternativesState.value));
-  setData(ALT_VALUES_KEY, serializableValue);
-}
 
 function normalizeScope(scope) {
   return scope === 'system' ? 'system' : 'user';
 }
 
 function getAlternatives(scope, name) {
-  const s = normalizeScope(scope);
-  const key = (name || '').trim();
-  if (!key) return [];
-  const list = alternativesState.value?.[s]?.[key];
-  return Array.isArray(list) ? list : [];
-}
-
-function setAlternatives(scope, name, list) {
-  const s = normalizeScope(scope);
-  const key = (name || '').trim();
-  if (!key) return;
-  if (!alternativesState.value[s]) alternativesState.value[s] = {};
-  alternativesState.value[s][key] = list;
-  persistAlternatives();
-}
-
-function removeAlternatives(scope, name) {
-  const s = normalizeScope(scope);
-  const key = (name || '').trim();
-  if (!key) return;
-  if (alternativesState.value?.[s] && alternativesState.value[s][key]) {
-    delete alternativesState.value[s][key];
-    persistAlternatives();
-  }
+  return alternativesStore.getAlternatives(scope, name);
 }
 
 // 禁用变量管理函数
@@ -415,17 +374,7 @@ function isVarDisabled(scope, name) {
 
 
 function moveAlternatives(scope, fromName, toName) {
-  const s = normalizeScope(scope);
-  const fromKey = (fromName || '').trim();
-  const toKey = (toName || '').trim();
-  if (!fromKey || !toKey || fromKey === toKey) return;
-  const fromList = getAlternatives(s, fromKey);
-  if (!fromList.length) return;
-
-  const existing = getAlternatives(s, toKey);
-  const merged = mergeAlternatives(existing, fromList);
-  setAlternatives(s, toKey, merged);
-  removeAlternatives(s, fromKey);
+  alternativesStore.moveAlternatives(scope, fromName, toName);
 }
 
 function mergeAlternatives(baseList, incomingList) {
@@ -448,11 +397,7 @@ function ensureAlternativeExists(scope, name, value, note = '') {
   if (!varName || !v) return;
   if (isPathVarValue(v)) return;
 
-  const existing = getAlternatives(scope, varName);
-  const has = existing.some(it => (it?.value ?? '').toString() === v);
-  if (has) return;
-
-  setAlternatives(scope, varName, [{ value: v, note: (note ?? '').toString() }, ...existing]);
+  alternativesStore.addAlternative(scope, varName, v, note);
 }
 
 // 状态
@@ -934,7 +879,7 @@ function exportCurrentConfig() {
         sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
         sensitiveKeywords: settingsStore.sensitiveKeywords.value
       },
-      var_alternatives: alternativesState.value,
+      var_alternatives: alternativesStore.alternatives.value,
       disabled_vars: disabledVarsState.value,
       env_vars: {
         system_vars: systemVars.value,
