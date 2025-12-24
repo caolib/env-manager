@@ -83,11 +83,20 @@ export function useAlternativesStore() {
         }
     }
 
+    const removeAllAlternatives = (scope, name) => {
+        const s = normalizeScope(scope)
+        const key = (name || '').trim()
+        if (alternatives.value[s] && alternatives.value[s][key]) {
+            delete alternatives.value[s][key]
+        }
+    }
+
     return {
         alternatives,
         getAlternatives,
         addAlternative,
         removeAlternative,
-        moveAlternatives
+        moveAlternatives,
+        removeAllAlternatives
     }
 }

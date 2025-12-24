@@ -1109,7 +1109,7 @@ async function deleteVar(row, scope) {
         // 删除禁用存储
         removeDisabledVar(scope, row.name);
         // 同步清理备用值
-        removeAlternatives(scope, row.name);
+        alternativesStore.removeAllAlternatives(scope, row.name);
         message.success(`变量 "${row.name}" 删除成功`);
         await loadEnvVars();
       } catch (error) {

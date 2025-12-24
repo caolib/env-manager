@@ -343,7 +343,7 @@ const applyScheme = async (group, scheme) => {
                     <div class="schemes-section">
                         <div class="section-header">
                             <span class="label">方案列表：</span>
-                            <a-button type="link" size="small" @click="handleAddScheme(group.id)">
+                            <a-button size="small" @click="handleAddScheme(group.id)">
                                 <PlusOutlined /> 添加方案
                             </a-button>
                         </div>

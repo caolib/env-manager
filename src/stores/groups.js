@@ -93,6 +93,10 @@ export function useGroupsStore() {
         groups.value = loadGroups()
     }
 
+    const importGroups = (newGroups) => {
+        groups.value = newGroups
+    }
+
     return {
         groups: allGroups,
         addGroup,
@@ -101,6 +105,7 @@ export function useGroupsStore() {
         addScheme,
         updateScheme,
         deleteScheme,
-        reload
+        reload,
+        importGroups
     }
 }

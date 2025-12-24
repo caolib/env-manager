@@ -2,13 +2,19 @@
 
 import { computed, ref, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { ExportOutlined, ImportOutlined } from '@ant-design/icons-vue';
+import { ExportOutlined, ImportOutlined, InboxOutlined, InfoCircleOutlined } from '@ant-design/icons-vue';
 import { useSettingsStore } from '../stores/settings'
 import { useGroupsStore } from '../stores/groups'
 import { getData, setData } from '../utils/store'
+import ImportDiffModal from './ImportDiffModal.vue';
 
 const settingsStore = useSettingsStore();
 const groupsStore = useGroupsStore();
+
+const showImportArea = ref(false);
+const showDiffModal = ref(false);
+const currentConfig = ref({});
+const pendingImportConfig = ref({});
 
 // 普通变量备用值（与 HomeView 保持一致）
 const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
@@ -64,6 +70,25 @@ function checkAdminPrivileges() {
     }
 }
 
+// 获取当前配置对象
+const getCurrentConfig = () => {
+    return {
+        version: '1.2.0',
+        settings: {
+            theme: settingsStore.theme.value,
+            sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
+            sensitiveKeywords: settingsStore.sensitiveKeywords.value
+        },
+        var_alternatives: getData(ALT_VALUES_KEY, { system: {}, user: {} }),
+        disabled_vars: getData(DISABLED_VARS_KEY, { system: {}, user: {} }),
+        groups: JSON.parse(JSON.stringify(groupsStore.groups.value)),
+        env_vars: {
+            system_vars: systemVars.value,
+            user_vars: userVars.value
+        }
+    };
+};
+
 // 导出配置（包含环境变量和应用配置）
 const exportConfig = () => {
     try {
@@ -74,20 +99,8 @@ const exportConfig = () => {
         const fileName = `env-manager-${timestamp}.json`;
 
         const configData = {
-            version: '1.2.0',
-            exportTime: beijingTime.toISOString(),
-            settings: {
-                theme: settingsStore.theme.value,
-                sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
-                sensitiveKeywords: settingsStore.sensitiveKeywords.value
-            },
-            var_alternatives: getData(ALT_VALUES_KEY, { system: {}, user: {} }),
-            disabled_vars: getData(DISABLED_VARS_KEY, { system: {}, user: {} }),
-            groups: getData(GROUPS_KEY, []),
-            env_vars: {
-                system_vars: systemVars.value,
-                user_vars: userVars.value
-            }
+            ...getCurrentConfig(),
+            exportTime: beijingTime.toISOString()
         };
 
         const result = window.services.exportConfig(configData, fileName);
@@ -105,131 +118,153 @@ const exportConfig = () => {
     }
 }
 
-// 导入配置（包含环境变量和应用配置）
-const importConfig = () => {
-    Modal.confirm({
-        title: '确认导入',
-        content: '导入配置将覆盖当前设置和环境变量，是否继续？',
-        okText: '确定',
-        cancelText: '取消',
-        async onOk() {
-            try {
-                // 导入前刷新一次权限状态（避免中途提权/降权造成误判）
-                checkAdminPrivileges();
+// 处理导入逻辑
+const processImport = async (config) => {
+    try {
+        // 导入前刷新一次权限状态（避免中途提权/降权造成误判）
+        checkAdminPrivileges();
 
-                const result = window.services.importConfig();
-                if (result.success) {
-                    const config = result.data;
+        let imported = 0;
+        let failed = 0;
+        let skipped = 0;
 
-                    let imported = 0;
-                    let failed = 0;
-                    let skipped = 0;
+        // 导入应用设置
+        if (config.settings) {
+            const s = config.settings;
+            if (s.theme !== undefined) settingsStore.setTheme(s.theme);
+            if (s.sensitiveFieldsEnabled !== undefined) settingsStore.setSensitiveFieldsEnabled(!!s.sensitiveFieldsEnabled);
+            if (s.sensitiveKeywords !== undefined && Array.isArray(s.sensitiveKeywords)) settingsStore.setSensitiveKeywords(s.sensitiveKeywords);
+        }
 
-                    // 导入应用设置
-                    if (config.settings) {
-                        const s = config.settings;
-                        if (s.theme !== undefined) settingsStore.setTheme(s.theme);
-                        if (s.sensitiveFieldsEnabled !== undefined) settingsStore.setSensitiveFieldsEnabled(!!s.sensitiveFieldsEnabled);
-                        if (s.sensitiveKeywords !== undefined && Array.isArray(s.sensitiveKeywords)) settingsStore.setSensitiveKeywords(s.sensitiveKeywords);
-                    }
+        // 导入普通变量备用值
+        if (config.var_alternatives && typeof config.var_alternatives === 'object') {
+            const a = config.var_alternatives;
+            const safe = {
+                system: a.system && typeof a.system === 'object' ? a.system : {},
+                user: a.user && typeof a.user === 'object' ? a.user : {}
+            };
+            setData(ALT_VALUES_KEY, safe);
+        }
 
-                    // 导入普通变量备用值
-                    if (config.var_alternatives && typeof config.var_alternatives === 'object') {
-                        const a = config.var_alternatives;
-                        const safe = {
-                            system: a.system && typeof a.system === 'object' ? a.system : {},
-                            user: a.user && typeof a.user === 'object' ? a.user : {}
-                        };
-                        setData(ALT_VALUES_KEY, safe);
-                    }
+        // 导入禁用变量
+        if (config.disabled_vars && typeof config.disabled_vars === 'object') {
+            const d = config.disabled_vars;
+            const safeDisabled = {
+                system: d.system && typeof d.system === 'object' ? d.system : {},
+                user: d.user && typeof d.user === 'object' ? d.user : {}
+            };
+            setData(DISABLED_VARS_KEY, safeDisabled);
 
-                    // 导入禁用变量
-                    if (config.disabled_vars && typeof config.disabled_vars === 'object') {
-                        const d = config.disabled_vars;
-                        const safeDisabled = {
-                            system: d.system && typeof d.system === 'object' ? d.system : {},
-                            user: d.user && typeof d.user === 'object' ? d.user : {}
-                        };
-                        setData(DISABLED_VARS_KEY, safeDisabled);
-
-                        // 确保禁用变量从注册表中删除
-                        for (const [name, info] of Object.entries(safeDisabled.system)) {
-                            if (isAdmin.value) {
-                                try {
-                                    await window.services.deleteEnvVar(name, true);
-                                } catch (err) {
-                                    // 忽略删除失败（可能已不存在）
-                                }
-                            }
-                        }
-                        for (const [name, info] of Object.entries(safeDisabled.user)) {
-                            try {
-                                await window.services.deleteEnvVar(name, false);
-                            } catch (err) {
-                                // 忽略删除失败（可能已不存在）
-                            }
-                        }
-                    }
-
-                    // 导入变量组
-                    if (config.groups && Array.isArray(config.groups)) {
-                        setData(GROUPS_KEY, config.groups);
-                        groupsStore.reload();
-                    }
-
-                    // 导入环境变量
-                    if (config.env_vars) {
-                        const envVars = config.env_vars;
-
-                        const systemVarCount = Array.isArray(envVars.system_vars) ? envVars.system_vars.length : 0;
-                        if (!isAdmin.value && systemVarCount > 0) {
-                            message.warning('当前无管理员权限：系统环境变量修改将会失败，已跳过系统变量导入');
-                        }
-
-                        // 导入系统变量
-                        if (envVars.system_vars) {
-                            if (isAdmin.value) {
-                                for (const v of envVars.system_vars) {
-                                    try {
-                                        await window.services.setEnvVar(v.name, v.value, true);
-                                        imported++;
-                                    } catch (error) {
-                                        console.error(`导入系统变量 ${v.name} 失败:`, error);
-                                        failed++;
-                                    }
-                                }
-                            } else {
-                                skipped += Array.isArray(envVars.system_vars) ? envVars.system_vars.length : 0;
-                            }
-                        }
-
-                        // 导入用户变量
-                        if (envVars.user_vars) {
-                            for (const v of envVars.user_vars) {
-                                try {
-                                    await window.services.setEnvVar(v.name, v.value, false);
-                                    imported++;
-                                } catch (error) {
-                                    console.error(`导入用户变量 ${v.name} 失败:`, error);
-                                    failed++;
-                                }
-                            }
-                        }
-
-                        await loadEnvVars();
-                    }
-
-                    message.success(`导入完成！${imported > 0 || failed > 0 || skipped > 0 ? `环境变量: 成功 ${imported} 个${failed > 0 ? `，失败 ${failed} 个` : ''}${skipped > 0 ? `，跳过 ${skipped} 个(系统变量)` : ''}` : '配置已导入'}`);
-                } else {
-                    if (result.message !== '用户取消选择') {
-                        message.error(`导入失败: ${result.message}`);
+            // 确保禁用变量从注册表中删除
+            for (const [name, info] of Object.entries(safeDisabled.system)) {
+                if (isAdmin.value) {
+                    try {
+                        await window.services.deleteEnvVar(name, true);
+                    } catch (err) {
+                        // 忽略删除失败（可能已不存在）
                     }
                 }
-            } catch (error) {
-                message.error(`导入配置失败: ${error.message}`);
+            }
+            for (const [name, info] of Object.entries(safeDisabled.user)) {
+                try {
+                    await window.services.deleteEnvVar(name, false);
+                } catch (err) {
+                    // 忽略删除失败（可能已不存在）
+                }
             }
         }
-    });
+
+        // 导入变量组
+        if (config.groups && Array.isArray(config.groups)) {
+            groupsStore.importGroups(config.groups);
+        }
+
+        // 导入环境变量
+        if (config.env_vars) {
+            const envVars = config.env_vars;
+
+            const systemVarCount = Array.isArray(envVars.system_vars) ? envVars.system_vars.length : 0;
+            if (!isAdmin.value && systemVarCount > 0) {
+                message.warning('当前无管理员权限：系统环境变量修改将会失败，已跳过系统变量导入');
+            }
+
+            // 导入系统变量
+            if (envVars.system_vars) {
+                if (isAdmin.value) {
+                    for (const v of envVars.system_vars) {
+                        try {
+                            await window.services.setEnvVar(v.name, v.value, true);
+                            imported++;
+                        } catch (error) {
+                            console.error(`导入系统变量 ${v.name} 失败:`, error);
+                            failed++;
+                        }
+                    }
+                } else {
+                    skipped += Array.isArray(envVars.system_vars) ? envVars.system_vars.length : 0;
+                }
+            }
+
+            // 导入用户变量
+            if (envVars.user_vars) {
+                for (const v of envVars.user_vars) {
+                    try {
+                        await window.services.setEnvVar(v.name, v.value, false);
+                        imported++;
+                    } catch (error) {
+                        console.error(`导入用户变量 ${v.name} 失败:`, error);
+                        failed++;
+                    }
+                }
+            }
+
+            await loadEnvVars();
+        }
+
+        message.success(`导入完成！${imported > 0 || failed > 0 || skipped > 0 ? `环境变量: 成功 ${imported} 个${failed > 0 ? `，失败 ${failed} 个` : ''}${skipped > 0 ? `，跳过 ${skipped} 个(系统变量)` : ''}` : '配置已导入'}`);
+        showImportArea.value = false;
+    } catch (error) {
+        message.error(`导入配置失败: ${error.message}`);
+    }
+};
+
+// 导入配置（包含环境变量和应用配置）
+const importConfig = async () => {
+    try {
+        const result = window.services.importConfig();
+        if (result.success) {
+            currentConfig.value = getCurrentConfig();
+            pendingImportConfig.value = result.data;
+            showDiffModal.value = true;
+        } else {
+            if (result.message !== '用户取消选择') {
+                message.error(`导入失败: ${result.message}`);
+            }
+        }
+    } catch (error) {
+        message.error(`导入配置失败: ${error.message}`);
+    }
+};
+
+// 拖拽导入处理
+const handleBeforeUpload = (file) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const config = JSON.parse(e.target.result);
+            currentConfig.value = getCurrentConfig();
+            pendingImportConfig.value = config;
+            showDiffModal.value = true;
+        } catch (error) {
+            message.error('解析配置文件失败，请确保是有效的 JSON 格式');
+        }
+    };
+    reader.readAsText(file);
+    return false; // 阻止自动上传
+};
+
+const handleDiffConfirm = async () => {
+    await processImport(pendingImportConfig.value);
 };
 
 // 添加敏感关键词
@@ -305,24 +340,62 @@ onMounted(() => {
 
         <div class="config-section">
             <h3>数据备份</h3>
-            <div class="config-row" style="gap: 10px; justify-content: flex-start;">
+            <div class="config-row" style="gap: 10px; justify-content: flex-start; margin-bottom: 16px;">
                 <a-button type="primary" @click="exportConfig">
                     <ExportOutlined />
                     导出备份
                 </a-button>
-                <a-button type="default" @click="importConfig">
+                <a-button :type="showImportArea ? 'primary' : 'default'" @click="showImportArea = !showImportArea">
                     <ImportOutlined />
                     导入备份
                 </a-button>
             </div>
+
+            <div v-if="showImportArea" class="import-area">
+                <a-alert type="warning" show-icon style="margin-bottom: 16px;">
+                    <template #message>
+                        <strong>导入须知</strong>
+                    </template>
+                    <template #description>
+                        <ul style="margin: 0; padding-left: 20px;">
+                            <li>建议在导入前先<strong>导出当前配置</strong>作为备份。</li>
+                            <li>导入的配置将<strong>完全覆盖</strong>当前的设置、变量组和环境变量。</li>
+                        </ul>
+                    </template>
+                </a-alert>
+
+                <a-upload-dragger name="file" :multiple="false" accept=".json" :before-upload="handleBeforeUpload"
+                    :show-upload-list="false">
+                    <p class="ant-upload-drag-icon">
+                        <InboxOutlined />
+                    </p>
+                    <p class="ant-upload-text">点击或将配置文件拖拽到此区域</p>
+                    <p class="ant-upload-hint">
+                        仅支持 .json 格式的备份文件
+                    </p>
+                </a-upload-dragger>
+            </div>
+
             <div style="text-align: left; margin-top: 8px; color: var(--ant-color-text-secondary); font-size: 12px;">
-                备份包含应用配置和所有环境变量
+                备份包含应用配置、变量组和所有环境变量
             </div>
         </div>
+
+        <ImportDiffModal v-model:open="showDiffModal" :currentConfig="currentConfig" :importConfig="pendingImportConfig"
+            @confirm="handleDiffConfirm" />
     </div>
 </template>
 
 <style scoped>
+.import-area {
+    background: rgba(0, 0, 0, 0.02);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--ant-border-color-split);
+    margin-bottom: 16px;
+    width: 100%;
+}
+
 div.config-view {
     display: flex;
     justify-content: start;
