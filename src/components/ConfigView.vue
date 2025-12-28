@@ -1,15 +1,17 @@
 <script setup>
 
 import { computed, ref, onMounted } from 'vue'
-import { message, Modal } from 'ant-design-vue'
-import { ExportOutlined, ImportOutlined, InboxOutlined, InfoCircleOutlined } from '@ant-design/icons-vue';
+import { message } from 'ant-design-vue'
+import { ExportOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons-vue';
 import { useSettingsStore } from '../stores/settings'
 import { useGroupsStore } from '../stores/groups'
+import { useAlternativesStore } from '../stores/alternatives'
 import { getData, setData } from '../utils/store'
 import ImportDiffModal from './ImportDiffModal.vue';
 
 const settingsStore = useSettingsStore();
 const groupsStore = useGroupsStore();
+const alternativesStore = useAlternativesStore();
 
 const showImportArea = ref(false);
 const showDiffModal = ref(false);
@@ -19,7 +21,6 @@ const pendingImportConfig = ref({});
 // 普通变量备用值（与 HomeView 保持一致）
 const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
 const DISABLED_VARS_KEY = 'env-manager-disabled-vars-v1';
-const GROUPS_KEY = 'env-manager-variable-groups';
 
 const systemVars = ref([]);
 const userVars = ref([]);
@@ -127,6 +128,8 @@ const processImport = async (config) => {
         let imported = 0;
         let failed = 0;
         let skipped = 0;
+        let importedAltsCount = 0;
+        let importedGroupsCount = 0;
 
         // 导入应用设置
         if (config.settings) {
@@ -143,7 +146,33 @@ const processImport = async (config) => {
                 system: a.system && typeof a.system === 'object' ? a.system : {},
                 user: a.user && typeof a.user === 'object' ? a.user : {}
             };
-            setData(ALT_VALUES_KEY, safe);
+
+            // 计算导入的备用值数量
+            let totalAlts = 0;
+            Object.keys(safe.system || {}).forEach(key => {
+                if (Array.isArray(safe.system[key])) totalAlts += safe.system[key].length;
+            });
+            Object.keys(safe.user || {}).forEach(key => {
+                if (Array.isArray(safe.user[key])) totalAlts += safe.user[key].length;
+            });
+
+            console.log('准备导入备用值:', safe, '总数:', totalAlts);
+
+            // 深度克隆为纯对象，去除 Proxy 等不可序列化对象
+            const pureData = JSON.parse(JSON.stringify(safe));
+            setData(ALT_VALUES_KEY, pureData);
+
+            // 验证保存是否成功
+            const savedData = getData(ALT_VALUES_KEY);
+            console.log('保存后的备用值:', savedData);
+
+            // 重新加载 alternatives store 以应用新数据
+            alternativesStore.reloadAlternatives();
+
+            // 验证 store 是否更新
+            console.log('Store 更新后的备用值:', alternativesStore.alternatives.value);
+
+            importedAltsCount = totalAlts;
         }
 
         // 导入禁用变量
@@ -153,22 +182,25 @@ const processImport = async (config) => {
                 system: d.system && typeof d.system === 'object' ? d.system : {},
                 user: d.user && typeof d.user === 'object' ? d.user : {}
             };
-            setData(DISABLED_VARS_KEY, safeDisabled);
+
+            // 深度克隆为纯对象
+            const pureDisabledData = JSON.parse(JSON.stringify(safeDisabled));
+            setData(DISABLED_VARS_KEY, pureDisabledData);
 
             // 确保禁用变量从注册表中删除
-            for (const [name, info] of Object.entries(safeDisabled.system)) {
+            for (const [name] of Object.entries(safeDisabled.system)) {
                 if (isAdmin.value) {
                     try {
                         await window.services.deleteEnvVar(name, true);
-                    } catch (err) {
+                    } catch {
                         // 忽略删除失败（可能已不存在）
                     }
                 }
             }
-            for (const [name, info] of Object.entries(safeDisabled.user)) {
+            for (const [name] of Object.entries(safeDisabled.user)) {
                 try {
                     await window.services.deleteEnvVar(name, false);
-                } catch (err) {
+                } catch {
                     // 忽略删除失败（可能已不存在）
                 }
             }
@@ -177,6 +209,7 @@ const processImport = async (config) => {
         // 导入变量组
         if (config.groups && Array.isArray(config.groups)) {
             groupsStore.importGroups(config.groups);
+            importedGroupsCount = config.groups.length;
         }
 
         // 导入环境变量
@@ -221,26 +254,21 @@ const processImport = async (config) => {
             await loadEnvVars();
         }
 
-        message.success(`导入完成！${imported > 0 || failed > 0 || skipped > 0 ? `环境变量: 成功 ${imported} 个${failed > 0 ? `，失败 ${failed} 个` : ''}${skipped > 0 ? `，跳过 ${skipped} 个(系统变量)` : ''}` : '配置已导入'}`);
-        showImportArea.value = false;
-    } catch (error) {
-        message.error(`导入配置失败: ${error.message}`);
-    }
-};
-
-// 导入配置（包含环境变量和应用配置）
-const importConfig = async () => {
-    try {
-        const result = window.services.importConfig();
-        if (result.success) {
-            currentConfig.value = getCurrentConfig();
-            pendingImportConfig.value = result.data;
-            showDiffModal.value = true;
-        } else {
-            if (result.message !== '用户取消选择') {
-                message.error(`导入失败: ${result.message}`);
-            }
+        // 构建导入结果消息
+        const messages = [];
+        if (imported > 0 || failed > 0 || skipped > 0) {
+            messages.push(`环境变量: 成功 ${imported} 个${failed > 0 ? `，失败 ${failed} 个` : ''}${skipped > 0 ? `，跳过 ${skipped} 个(需管理员权限)` : ''}`);
         }
+        if (importedAltsCount > 0) {
+            messages.push(`备用值: ${importedAltsCount} 个`);
+        }
+        if (importedGroupsCount > 0) {
+            messages.push(`变量组: ${importedGroupsCount} 个`);
+        }
+
+        const resultMsg = messages.length > 0 ? `导入完成！${messages.join('，')}` : '配置已导入';
+        message.success(resultMsg, 5); // 显示5秒
+        showImportArea.value = false;
     } catch (error) {
         message.error(`导入配置失败: ${error.message}`);
     }
@@ -248,6 +276,7 @@ const importConfig = async () => {
 
 // 拖拽导入处理
 const handleBeforeUpload = (file) => {
+    // eslint-disable-next-line no-undef
     const reader = new FileReader();
     reader.onload = async (e) => {
         try {
@@ -255,7 +284,7 @@ const handleBeforeUpload = (file) => {
             currentConfig.value = getCurrentConfig();
             pendingImportConfig.value = config;
             showDiffModal.value = true;
-        } catch (error) {
+        } catch {
             message.error('解析配置文件失败，请确保是有效的 JSON 格式');
         }
     };

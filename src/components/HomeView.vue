@@ -325,6 +325,10 @@ function getAlternatives(scope, name) {
   return alternativesStore.getAlternatives(scope, name);
 }
 
+function setAlternatives(scope, name, list) {
+  return alternativesStore.setAlternatives(scope, name, list);
+}
+
 // 禁用变量管理函数
 function loadDisabledVars() {
   const saved = getData(DISABLED_VARS_KEY, null);
@@ -368,28 +372,28 @@ function removeDisabledVar(scope, name) {
   }
 }
 
-function isVarDisabled(scope, name) {
-  return getDisabledVar(scope, name) !== null;
-}
+// function isVarDisabled(scope, name) {
+//   return getDisabledVar(scope, name) !== null;
+// }
 
 
 function moveAlternatives(scope, fromName, toName) {
   alternativesStore.moveAlternatives(scope, fromName, toName);
 }
 
-function mergeAlternatives(baseList, incomingList) {
-  const result = [];
-  const seen = new Set();
-  const pushItem = (it) => {
-    const value = (it?.value ?? '').toString();
-    if (!value) return;
-    if (seen.has(value)) return;
-    seen.add(value);
-    result.push({ value, note: (it?.note ?? '').toString() });
-  };
-  [...incomingList, ...baseList].forEach(pushItem);
-  return result;
-}
+// function mergeAlternatives(baseList, incomingList) {
+//   const result = [];
+//   const seen = new Set();
+//   const pushItem = (it) => {
+//     const value = (it?.value ?? '').toString();
+//     if (!value) return;
+//     if (seen.has(value)) return;
+//     seen.add(value);
+//     result.push({ value, note: (it?.note ?? '').toString() });
+//   };
+//   [...incomingList, ...baseList].forEach(pushItem);
+//   return result;
+// }
 
 function ensureAlternativeExists(scope, name, value, note = '') {
   const varName = (name || '').trim();
@@ -779,23 +783,23 @@ function mergeAndFilterVars(activeVars, scope) {
 }
 
 // 过滤函数（已废弃，由 mergeAndFilterVars 替代）
-function filterVars(vars) {
-  let filtered = vars;
-  if (searchKeyword.value) {
-    const keyword = searchKeyword.value.toLowerCase();
-    filtered = vars.filter(v => {
-      return v.name.toLowerCase().includes(keyword) || v.value.toLowerCase().includes(keyword);
-    });
-  }
+// function filterVars(vars) {
+//   let filtered = vars;
+//   if (searchKeyword.value) {
+//     const keyword = searchKeyword.value.toLowerCase();
+//     filtered = vars.filter(v => {
+//       return v.name.toLowerCase().includes(keyword) || v.value.toLowerCase().includes(keyword);
+//     });
+//   }
 
-  // 将 path 变量排在最后
-  return filtered.sort((a, b) => {
-    const aIsPath = isPathVar(a);
-    const bIsPath = isPathVar(b);
-    if (aIsPath === bIsPath) return 0;
-    return aIsPath ? 1 : -1;
-  });
-}
+//   // 将 path 变量排在最后
+//   return filtered.sort((a, b) => {
+//     const aIsPath = isPathVar(a);
+//     const bIsPath = isPathVar(b);
+//     if (aIsPath === bIsPath) return 0;
+//     return aIsPath ? 1 : -1;
+//   });
+// }
 
 // 判断是否为 path 变量（分号分隔的多路径）
 function isPathVar(envVar) {
@@ -921,34 +925,44 @@ function checkAdminPrivileges() {
 }
 
 // 以管理员身份重启
-function restartAsAdmin() {
-  Modal.confirm({
-    title: '以管理员身份重启',
-    content: 'uTools 将重新启动,当前会话将关闭。是否继续?',
-    okText: '确定',
-    cancelText: '取消',
-    onOk() {
-      try {
-        window.services.restartAsAdmin();
-        message.success('正在重启...');
-      } catch (error) {
-        console.error('重启失败:', error);
-        message.error('重启失败: ' + error.message);
-      }
-    }
-  });
-}
+// function restartAsAdmin() {
+//   Modal.confirm({
+//     title: '以管理员身份重启',
+//     content: 'uTools 将重新启动,当前会话将关闭。是否继续?',
+//     okText: '确定',
+//     cancelText: '取消',
+//     onOk() {
+//       try {
+//         window.services.restartAsAdmin();
+//         message.success('正在重启...');
+//       } catch (error) {
+//         console.error('重启失败:', error);
+//         message.error('重启失败: ' + error.message);
+//       }
+//     }
+//   });
+// }
 
 // 显示添加对话框
+// 重置备用值相关状态
+function resetAlternativesState() {
+  altValueInput.value = '';
+  altNoteInput.value = '';
+  editingNoteIndex.value = -1;
+  editingNoteValue.value = '';
+}
+
 function showAddSystemDialog() {
   formData.value = { name: '', value: '', scope: 'system', disabled: false };
   editMode.value = false;
+  resetAlternativesState();
   showDialog.value = true;
 }
 
 function showAddUserDialog() {
   formData.value = { name: '', value: '', scope: 'user', disabled: false };
   editMode.value = false;
+  resetAlternativesState();
   showDialog.value = true;
 }
 
@@ -976,14 +990,14 @@ function editVar(row, scope) {
   };
   originalVarName.value = row.name;
   editMode.value = true;
+
+  // 重置备用值编辑状态，确保列表能正确显示
+  resetAlternativesState();
+
   showDialog.value = true;
 
   // 进入编辑弹窗时，把当前值自动纳入备用值（仅普通变量）
   ensureAlternativeExists(scope, row.name, row.value);
-
-  // 清理备用值输入
-  altValueInput.value = '';
-  altNoteInput.value = '';
 }
 
 // 取消编辑
@@ -993,9 +1007,7 @@ function cancelEdit() {
   kvInput.value = '';
   editMode.value = false;
   originalVarName.value = '';
-
-  altValueInput.value = '';
-  altNoteInput.value = '';
+  resetAlternativesState();
 }
 
 // 解析 KV 格式输入
@@ -1048,7 +1060,7 @@ async function handleSubmit() {
           originalVarName.value,
           formData.value.scope === 'system'
         );
-      } catch (err) {
+      } catch {
         // 忽略删除失败（可能原本就是禁用状态）
       }
       // 删除禁用存储中的旧变量
@@ -1063,7 +1075,7 @@ async function handleSubmit() {
           formData.value.name,
           formData.value.scope === 'system'
         );
-      } catch (err) {
+      } catch {
         // 忽略删除失败（可能原本就不存在）
       }
       setDisabledVar(formData.value.scope, formData.value.name, formData.value.value);
@@ -1082,7 +1094,11 @@ async function handleSubmit() {
     message.success(`变量 "${formData.value.name}" ${action}成功${status}`);
 
     showDialog.value = false;
-    cancelEdit();
+    formData.value = { name: '', value: '', scope: 'user', disabled: false };
+    kvInput.value = '';
+    editMode.value = false;
+    originalVarName.value = '';
+    resetAlternativesState();
     await loadEnvVars();
   } catch (error) {
     const action = editMode.value ? '更新' : '添加';
@@ -1103,7 +1119,7 @@ async function deleteVar(row, scope) {
         // 删除注册表中的变量
         try {
           await window.services.deleteEnvVar(row.name, scope === 'system');
-        } catch (err) {
+        } catch {
           // 忽略删除失败（可能是禁用状态）
         }
         // 删除禁用存储

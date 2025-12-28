@@ -1,11 +1,8 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import {
     CheckCircleOutlined,
-    CloseCircleOutlined,
-    ExclamationCircleOutlined,
-    ArrowRightOutlined,
-    DiffOutlined
+    ArrowRightOutlined
 } from '@ant-design/icons-vue';
 
 const props = defineProps({
@@ -66,27 +63,6 @@ const groupDiff = computed(() => {
     const changes = [];
     const currentGroups = props.currentConfig?.groups || [];
     const importGroups = props.importConfig?.groups || [];
-
-    const currentMap = new Map(currentGroups.map(g => [g.id, g]));
-    const importMap = new Map(importGroups.map(g => [g.id, g]));
-
-    // 检查新增和修改
-    importGroups.forEach(g => {
-        if (!currentMap.has(g.id)) {
-            // 尝试通过名字匹配（如果ID不同但名字相同，可能是同一个组的不同版本？）
-            // 但这里简单起见，按ID匹配，或者按名字匹配？
-            // 考虑到导入的可能是别人的配置，ID可能完全不同。
-            // 策略：变量组是全量覆盖的。
-            // 所以我们应该展示：导入后会变成什么样，或者对比名字。
-            // 简单起见，对比名字。
-        }
-    });
-
-    // 由于变量组是全量覆盖，我们直接列出差异可能比较复杂。
-    // 我们可以列出：导入将包含 X 个变量组。
-    // 详细对比：
-    // 1. 找出 ID 相同或名字相同的组进行对比
-    // 2. 标记为 新增/修改/删除
 
     // 简化策略：按名字对比
     const currentNames = new Map(currentGroups.map(g => [g.name, g]));
@@ -177,6 +153,71 @@ const groupDiff = computed(() => {
 
     return changes.sort((a, b) => {
         const order = { add: 1, modify: 2, remove: 3, same: 4 };
+        return order[a.type] - order[b.type];
+    });
+});
+
+// 比较备用值
+const alternativesDiff = computed(() => {
+    const changes = [];
+    const currentAlts = props.currentConfig?.var_alternatives || { system: {}, user: {} };
+    const importAlts = props.importConfig?.var_alternatives || { system: {}, user: {} };
+
+    const compareAlts = (currentScope, importScope, scope) => {
+        const currentVars = Object.keys(currentScope);
+        const importVars = Object.keys(importScope);
+        const allVars = new Set([...currentVars, ...importVars]);
+
+        allVars.forEach(varName => {
+            const currentList = currentScope[varName] || [];
+            const importList = importScope[varName] || [];
+
+            if (currentList.length === 0 && importList.length === 0) {
+                return; // 都没有，跳过
+            }
+
+            if (currentList.length === 0 && importList.length > 0) {
+                // 新增
+                changes.push({
+                    type: 'add',
+                    scope,
+                    name: varName,
+                    count: importList.length,
+                    values: importList
+                });
+            } else if (currentList.length > 0 && importList.length === 0) {
+                // 删除
+                changes.push({
+                    type: 'remove',
+                    scope,
+                    name: varName,
+                    count: currentList.length
+                });
+            } else {
+                // 比较内容
+                const currentStr = JSON.stringify(currentList);
+                const importStr = JSON.stringify(importList);
+
+                if (currentStr !== importStr) {
+                    changes.push({
+                        type: 'modify',
+                        scope,
+                        name: varName,
+                        oldCount: currentList.length,
+                        newCount: importList.length,
+                        oldValues: currentList,
+                        newValues: importList
+                    });
+                }
+            }
+        });
+    };
+
+    compareAlts(currentAlts.system || {}, importAlts.system || {}, 'system');
+    compareAlts(currentAlts.user || {}, importAlts.user || {}, 'user');
+
+    return changes.sort((a, b) => {
+        const order = { add: 1, modify: 2, remove: 3 };
         return order[a.type] - order[b.type];
     });
 });
@@ -327,6 +368,70 @@ const handleCancel = () => {
                     </a-table-column>
                 </a-table>
             </a-tab-pane>
+
+            <a-tab-pane key="alternatives" tab="备用值">
+                <div v-if="alternativesDiff.length === 0" class="empty-diff">
+                    <CheckCircleOutlined style="color: #52c41a; font-size: 24px; margin-bottom: 8px;" />
+                    <p>备用值没有检测到变化</p>
+                </div>
+                <a-table v-else :dataSource="alternativesDiff" :pagination="false" size="small"
+                    :scroll="{ y: 'calc(100vh - 300px)' }">
+                    <a-table-column title="变量信息" key="info" width="200px">
+                        <template #default="{ record }">
+                            <div class="var-info">
+                                <div class="var-name" :title="record.name">{{ record.name }}</div>
+                                <div class="var-meta">
+                                    <a-tag v-if="record.type === 'add'" color="green" class="mini-tag">新增</a-tag>
+                                    <a-tag v-else-if="record.type === 'modify'" color="orange"
+                                        class="mini-tag">修改</a-tag>
+                                    <a-tag v-else-if="record.type === 'remove'" color="red" class="mini-tag">删除</a-tag>
+                                    <a-tag class="mini-tag">{{ record.scope === 'system' ? '系统' : '用户' }}</a-tag>
+                                </div>
+                            </div>
+                        </template>
+                    </a-table-column>
+                    <a-table-column title="变更详情" key="details">
+                        <template #default="{ record }">
+                            <div class="detail-container">
+                                <div v-if="record.type === 'add'" class="detail-section">
+                                    <span class="detail-label">新增 {{ record.count }} 个备用值:</span>
+                                    <div class="alt-list">
+                                        <div v-for="(alt, idx) in record.values" :key="idx" class="alt-item">
+                                            <span class="alt-note" v-if="alt.note">[{{ alt.note }}]</span>
+                                            <span class="alt-value">{{ alt.value }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else-if="record.type === 'modify'" class="detail-section">
+                                    <span class="detail-label">{{ record.oldCount }} 个 → {{ record.newCount }}
+                                        个备用值</span>
+                                    <div class="alt-compare">
+                                        <div class="alt-column">
+                                            <div class="alt-column-title">当前 ({{ record.oldCount }})</div>
+                                            <div v-for="(alt, idx) in record.oldValues" :key="idx" class="alt-item old">
+                                                <span class="alt-note" v-if="alt.note">[{{ alt.note }}]</span>
+                                                <span class="alt-value">{{ alt.value }}</span>
+                                            </div>
+                                        </div>
+                                        <ArrowRightOutlined style="margin: 0 16px; color: #999;" />
+                                        <div class="alt-column">
+                                            <div class="alt-column-title">导入后 ({{ record.newCount }})</div>
+                                            <div v-for="(alt, idx) in record.newValues" :key="idx" class="alt-item new">
+                                                <span class="alt-note" v-if="alt.note">[{{ alt.note }}]</span>
+                                                <span class="alt-value">{{ alt.value }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else-if="record.type === 'remove'" class="detail-section">
+                                    <span class="detail-label" style="color: #ff4d4f;">将删除 {{ record.count }}
+                                        个备用值</span>
+                                </div>
+                            </div>
+                        </template>
+                    </a-table-column>
+                </a-table>
+            </a-tab-pane>
         </a-tabs>
     </a-modal>
 </template>
@@ -461,6 +566,68 @@ const handleCancel = () => {
 .diff-val.mini {
     padding: 0 2px;
     font-size: 11px;
+}
+
+.alt-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.alt-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 4px;
+}
+
+.alt-item.old {
+    background: rgba(255, 77, 79, 0.05);
+    border: 1px dashed rgba(255, 77, 79, 0.3);
+}
+
+.alt-item.new {
+    background: rgba(82, 196, 26, 0.05);
+    border: 1px dashed rgba(82, 196, 26, 0.3);
+}
+
+.alt-note {
+    color: #1890ff;
+    font-weight: 500;
+}
+
+.alt-value {
+    font-family: monospace;
+    word-break: break-all;
+    flex: 1;
+}
+
+.alt-compare {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.alt-column {
+    flex: 1;
+    min-width: 0;
+}
+
+.alt-column-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #666;
+}
+
+.alt-more {
+    font-size: 12px;
+    color: #999;
+    font-style: italic;
+    margin-top: 4px;
 }
 </style>
 

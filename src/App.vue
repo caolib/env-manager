@@ -47,6 +47,7 @@ const themeConfig = computed(() => {
 
 // 应用主题到document
 const applyTheme = () => {
+  // eslint-disable-next-line no-undef
   document.documentElement.setAttribute('data-theme', actualTheme.value);
 };
 
@@ -91,7 +92,7 @@ onMounted(() => {
     enterAction.value = action;
   });
 
-  window.utools.onPluginOut((isKill) => {
+  window.utools.onPluginOut(() => {
     currentView.value = ['home'];
   });
 });

@@ -5,11 +5,9 @@ import {
     EditOutlined,
     DeleteOutlined,
     CheckOutlined,
-    SettingOutlined,
     UserOutlined,
     WindowsOutlined,
     ExclamationCircleOutlined,
-    DeploymentUnitOutlined,
     SearchOutlined,
     CopyOutlined
 } from '@ant-design/icons-vue';
@@ -95,9 +93,14 @@ const getValueOptions = (varName, scope) => {
     // 1. 当前值 (系统注册表中实际存在的值)
     const currentValue = currentEnvVarValues.value[varName];
     if (currentValue !== undefined) {
+        // 查找当前值在备用值中的备注
+        const alts = alternativesStore.getAlternatives(scope, varName);
+        const currentAlt = alts.find(alt => alt.value === currentValue);
+        const noteLabel = currentAlt?.note ? ` - ${currentAlt.note}` : '';
+
         options.push({
             value: currentValue,
-            label: `[系统当前值] ${currentValue}`
+            label: `[当前${noteLabel}] ${currentValue}`
         });
     }
 
@@ -122,7 +125,7 @@ const isAdmin = ref(false);
 const checkAdmin = async () => {
     try {
         isAdmin.value = window.services.checkAdminPrivileges();
-    } catch (e) {
+    } catch {
         isAdmin.value = false;
     }
 };
@@ -249,15 +252,37 @@ const handleCopyScheme = (groupId, scheme) => {
     message.success(`方案 "${scheme.name}" 已复制`);
 };
 
-const saveScheme = () => {
+const saveScheme = async () => {
     if (!schemeForm.value.name) {
         message.warning('请输入方案名称');
         return;
     }
 
+    // 获取当前组信息
+    const group = groupsStore.groups.value.find(g => g.id === currentGroupId.value);
+    const isEditingActiveScheme = editingScheme.value && group.activeSchemeId === editingScheme.value.id;
+
     if (editingScheme.value) {
         groupsStore.updateScheme(currentGroupId.value, editingScheme.value.id, schemeForm.value);
         message.success('更新成功');
+
+        // 如果编辑的是当前激活的方案，自动应用更新
+        if (isEditingActiveScheme) {
+            const isSystem = group.scope === 'system';
+            if (isSystem && !isAdmin.value) {
+                message.warning('已保存方案，但修改系统变量需要管理员权限，请手动点击"应用"按钮');
+            } else {
+                try {
+                    const promises = Object.entries(schemeForm.value.values).map(([name, value]) => {
+                        return window.services.setEnvVar(name, value, isSystem);
+                    });
+                    await Promise.all(promises);
+                    message.success('方案已更新并应用到系统环境变量');
+                } catch (error) {
+                    message.error(`应用到系统失败: ${error.message}`);
+                }
+            }
+        }
     } else {
         groupsStore.addScheme(currentGroupId.value, schemeForm.value);
         message.success('添加成功');
