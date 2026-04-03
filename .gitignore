@@ -26,4 +26,3 @@ dist-ssr
 **lock.yaml
 
 .claude/settings.local.json
-/release/

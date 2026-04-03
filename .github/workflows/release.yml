@@ -47,11 +47,11 @@ jobs:
                   $version = "${{ steps.get_version.outputs.version }}"
                   # 尝试 .upxs 和 .upx 两种扩展名
                   $fileNames = @(
-                    "git commit helper-$version.upxs",
-                    "git commit helper-$version.upx"
+                    "环境变量管理器-$version.upxs",
+                    "环境变量管理器-$version.upx"
                   )
-                  # 在项目根目录的 build 文件夹中查找
-                  $basePath = "build"
+                  # 在项目根目录的 release 文件夹中查找
+                  $basePath = "release"
 
                   $foundFile = $null
                   foreach ($fileName in $fileNames) {
@@ -61,7 +61,7 @@ jobs:
                     if (Test-Path $filePath) {
                       Write-Host "✅ Found: $filePath"
                       # 转换为相对路径（使用正斜杠）
-                      $relativePath = "build/$fileName"
+                      $relativePath = "release/$fileName"
                       $foundFile = @{
                         path = $relativePath
                         name = $fileName
@@ -79,7 +79,7 @@ jobs:
                     Write-Host "❌ File not found in: $basePath"
                     Write-Host "Tried files:"
                     $fileNames | ForEach-Object { Write-Host "  - $_" }
-                    Write-Host "Please make sure the file exists in the 'build' folder of your repository"
+                    Write-Host "Please make sure the file exists in the 'release' folder of your repository"
                     echo "found=false" >> $env:GITHUB_OUTPUT
                     exit 1
                   }

@@ -123,10 +123,10 @@ function Generate-ReleaseNotes {
     
     $output += "---`n"
     if ($PreviousTag) {
-        $output += "📋 [查看完整更新日志](https://github.com/caolib/git-commit-helper/compare/$PreviousTag...$LatestTag)`n"
+        $output += "📋 [查看完整更新日志](https://github.com/caolib/env-manager/compare/$PreviousTag...$LatestTag)`n"
     }
     else {
-        $output += "📋 [查看完整更新日志](https://github.com/caolib/git-commit-helper/commits/$LatestTag)`n"
+        $output += "📋 [查看完整更新日志](https://github.com/caolib/env-manager/commits/$LatestTag)`n"
     }
     
     return $output

@@ -1,5 +1,5 @@
 # uTools插件发布脚本
-# 用于发布 git-commit-helper 插件
+# 用于发布 环境变量管理器 插件
 param(
     [Parameter()]
     [string]$Version
@@ -155,7 +155,7 @@ $TagVersion = "v$VersionNumber"
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "准备发布 Git Commit Helper v$VersionNumber" -ForegroundColor Green
+Write-Host "准备发布 环境变量管理器 v$VersionNumber" -ForegroundColor Green
 Write-Host "标签: $TagVersion" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
@@ -264,9 +264,9 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "下一步操作:" -ForegroundColor Yellow
 Write-Host "1. GitHub Actions 会自动构建并创建 Release" -ForegroundColor White
-Write-Host "2. 访问 https://github.com/caolib/git-commit-helper/actions 查看构建进度" -ForegroundColor White
-Write-Host "3. 构建完成后，在 https://github.com/caolib/git-commit-helper/releases 查看发布" -ForegroundColor White
+Write-Host "2. 访问 https://github.com/caolib/env-manager/actions 查看构建进度" -ForegroundColor White
+Write-Host "3. 构建完成后，在 https://github.com/caolib/env-manager/releases 查看发布" -ForegroundColor White
 Write-Host ""
 Write-Host "注意事项:" -ForegroundColor Yellow
-Write-Host "- 安装文件路径格式: build/git commit helper-$VersionNumber.upxs" -ForegroundColor White
+Write-Host "- 安装文件路径格式: release/环境变量管理器-`$VersionNumber.upxs" -ForegroundColor White
 Write-Host "- 请确保该文件存在后再运行 GitHub Actions" -ForegroundColor White

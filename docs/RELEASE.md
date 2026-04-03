@@ -1,22 +1,15 @@
 ## 更新内容
 
 ### ✨ 新功能
-- [b205bbb] ✨ feat: 光标自动聚焦到文本域
-- [f1d3361] ✨ feat: 支持复制后直接粘贴
-- [921ada4] ✨ feat: 添加配置导入导出功能
-- [83d311b] ✨ feat: 添加深色主题
-- [34bcd51] ✨ feat: 动态注册命令
-- [7dc951a] ✨ feat: 添加自动分类规则配置
+- [aa9c198] ✨ feat: 简化path变量的保存，直接保存，可以手动打开diff检查
+- [359cabf] ✨ feat: 现在无需utools以管理员身份运行也可以修改系统环境变量
+- [1dcbc0a] ✨ feat: 添加备用值数据迁移指南，支持旧版本数据自动迁移，并优化备用值管理功能
 
 ### 🐛 修复
-- [eeb29a8] 🐛 fix: 添加贡献者和问题id等属性，添加自动分类功能
+- [2b9486f] 🐛 fix: 修复path变量在编辑状态下搜索命中没有高亮的问题
 
 ### 🔧 其他
-- [04c742e] 🐳 chore: 发布 v0.2.0
-- [82e2456] 📄 docs: 添加变更日志文件
-- [b4afcf1] 🦄 refactor: 存储改为使用utools官方的db-storage工具
-- [12cde6e] 🦄 refactor: 优化规则配置
-- [ca7d0fb] 🌈 style: 优化界面布局
+- [6411968] 🌈 ui: 修改logo
 
 ---
-📋 [查看完整更新日志](https://github.com/caolib/git-commit-helper/compare/v0.1.0...v0.2.0)
+📋 [查看完整更新日志](https://github.com/caolib/env-manager/compare/v0.0.5...v0.0.7)
