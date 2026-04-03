@@ -57,7 +57,7 @@
               :disabled="row.disabled" :is-readonly="false"
               :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
               :sensitive-keywords="settingsStore.sensitiveKeywords.value" @edit="(row) => editVar(row, 'system')"
-              @delete="(row) => deleteVar(row, 'system')" />
+              @delete="(row) => deleteVar(row, 'system')" @saveDirect="(row) => saveDirectVar(row, 'system')" />
           </div>
 
           <!-- 表格模式 -->
@@ -125,7 +125,7 @@
             <EnvVarCard v-for="row in filteredUserVars" :key="row.name" :env-var="row" :highlight="searchKeyword"
               :disabled="row.disabled" :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
               :sensitive-keywords="settingsStore.sensitiveKeywords.value" @edit="(row) => editVar(row, 'user')"
-              @delete="(row) => deleteVar(row, 'user')" />
+              @delete="(row) => deleteVar(row, 'user')" @saveDirect="(row) => saveDirectVar(row, 'user')" />
           </div>
 
           <!-- 表格模式 -->
@@ -1090,6 +1090,28 @@ async function handleSubmit() {
     console.error('Error saving env var:', error);
   } finally {
     submitting.value = false;
+  }
+}
+
+// 直接保存变量（绕过表单对话框）
+async function saveDirectVar(row, scope) {
+  try {
+    const isSystem = scope === 'system';
+    
+    // 如果原来是禁用的，仅更新 disabled 存储
+    const disabledInfo = getDisabledVar(scope, row.name);
+    if (disabledInfo) {
+      setDisabledVar(scope, row.name, row.value);
+    } else {
+      // 启用的，直接 setEnvVar
+      await window.services.setEnvVar(row.name, row.value, isSystem);
+    }
+    
+    message.success(`变量 "${row.name}" 更新成功${disabledInfo ? '（已禁用）' : ''}`);
+    await loadEnvVars();
+  } catch (error) {
+    message.error(`更新失败: ${error.message}`);
+    console.error('Error direct saving env var:', error);
   }
 }
 

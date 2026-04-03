@@ -58,6 +58,7 @@
                             <a-button size="small" type="primary" @click="savePath">保存</a-button>
                             <a-button size="small" @click="cancelEditPath">取消</a-button>
                             <a-button size="small" @click="removeDuplicates">去重</a-button>
+                            <a-button v-if="isDirty" size="small" @click="showDiff">diff</a-button>
                             <a-button size="small" @click="addPath">
                                 <PlusOutlined />
                                 添加路径
@@ -160,7 +161,7 @@ const props = defineProps({
     }
 });
 
-const emit = defineEmits(['edit', 'delete']);
+const emit = defineEmits(['edit', 'delete', 'saveDirect']);
 
 // 注入主题模式，供 PathDiffModal 使用
 const themeMode = inject('themeMode', 'light');
@@ -334,8 +335,17 @@ function addPath() {
     isDirty.value = true;
 }
 
-// 保存并显示 diff 确认
-async function savePath() {
+// 直接保存
+function savePath() {
+    const newPaths = editList.value.filter(Boolean);
+    const finalValue = newPaths.join(';');
+    emit('saveDirect', { ...props.envVar, value: finalValue });
+    editingPath.value = false;
+    isDirty.value = false;
+}
+
+// 显示 diff 确认后保存
+async function showDiff() {
     const oldPaths = pathList.value;
     const newPaths = editList.value.filter(Boolean);
 
@@ -351,7 +361,7 @@ async function savePath() {
         cancelText: '取消',
         onOk() {
             const finalValue = newPaths.join(';');
-            emit('edit', { ...props.envVar, value: finalValue });
+            emit('saveDirect', { ...props.envVar, value: finalValue });
             editingPath.value = false;
             isDirty.value = false;
         }
