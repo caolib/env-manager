@@ -68,8 +68,16 @@
                     <a-alert v-if="isDirty" message="有未保存的更改" type="warning" show-icon style="margin: 8px 0;" />
                     <div class="path-edit-list">
                         <div v-for="(item, index) in editList" :key="index" class="path-edit-item">
-                            <a-input v-model:value="editList[index]" style="width: 800px" placeholder="输入路径..."
-                                size="small" />
+                            <div style="position: relative; width: 800px;">
+                                <a-input v-model:value="editList[index]" style="width: 100%" placeholder="输入路径..."
+                                    size="small"
+                                    @focus="focusedIndex = index"
+                                    @blur="focusedIndex = null" />
+                                <div v-show="focusedIndex !== index && props.highlight && item.toLowerCase().includes(props.highlight.toLowerCase())"
+                                     class="path-highlight-overlay"
+                                     v-html="renderPathItem(item)">
+                                </div>
+                            </div>
                             <a-button size="small" type="link" @click="insertPathAfter(index)" title="在下方插入路径">
                                 <PlusOutlined />
                             </a-button>
@@ -202,6 +210,9 @@ const isDirty = ref(false);
 
 // 敏感信息相关
 const showFullValue = ref(false);
+
+// 焦点追踪（用于搜索高亮覆盖层）
+const focusedIndex = ref(null);
 
 // 检查变量是否为敏感字段
 const isSensitiveField = computed(() => {
@@ -674,6 +685,25 @@ function removeDuplicates() {
 
 .disabled-card .var-value {
     color: var(--ant-color-text-tertiary);
+}
+
+.path-highlight-overlay {
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    right: 1px;
+    bottom: 1px;
+    background-color: var(--ant-color-bg-container, #ffffff);
+    pointer-events: none;
+    padding: 0 7px;
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    z-index: 2;
+    border-radius: 3px;
 }
 </style>
 
