@@ -18,11 +18,11 @@
         <a-tooltip v-if="!isAdmin" placement="bottom">
           <template #title>
             <div style="max-width: 280px;">
-              <div>修改系统环境变量需要管理员权限，请以管理员身份启动utools</div>
+              <div>当前非管理员身份，修改系统变量时将弹出 UAC 授权窗口</div>
             </div>
           </template>
-          <a-tag color="warning">
-            <WarningOutlined /> 无管理员权限
+          <a-tag color="processing">
+            <WarningOutlined /> 非管理员
           </a-tag>
         </a-tooltip>
         <a-tag v-else color="success">
@@ -44,13 +44,7 @@
                 系统环境变量
                 <a-tag>{{ systemVars.length }}</a-tag>
               </span>
-              <a-tooltip v-if="!isAdmin" title="需要管理员权限才能添加系统环境变量">
-                <a-button size="small" type="primary" :disabled="true">
-                  <PlusOutlined />
-                  添加
-                </a-button>
-              </a-tooltip>
-              <a-button v-else size="small" type="primary" @click.stop="showAddSystemDialog">
+              <a-button size="small" type="primary" @click.stop="showAddSystemDialog">
                 <PlusOutlined />
                 添加
               </a-button>
@@ -60,7 +54,7 @@
           <!-- 卡片模式 -->
           <div v-if="settingsStore.layoutMode.value === 'card'" class="vars-container">
             <EnvVarCard v-for="row in filteredSystemVars" :key="row.name" :env-var="row" :highlight="searchKeyword"
-              :disabled="row.disabled" :is-readonly="!isAdmin"
+              :disabled="row.disabled" :is-readonly="false"
               :sensitive-fields-enabled="settingsStore.sensitiveFieldsEnabled.value"
               :sensitive-keywords="settingsStore.sensitiveKeywords.value" @edit="(row) => editVar(row, 'system')"
               @delete="(row) => deleteVar(row, 'system')" />
@@ -94,25 +88,15 @@
                       title="复制 KEY=VALUE">
                       <CopyOutlined />
                     </a-button>
-                    <a-tooltip v-if="!isAdmin" title="需要管理员权限">
-                      <a-button size="small" type="link" :disabled="true">
-                        <EditOutlined />
-                      </a-button>
-                    </a-tooltip>
-                    <a-button v-else size="small" type="link" @click="editVar(record, 'system')">
+                    <a-button size="small" type="link" @click="editVar(record, 'system')">
                       <EditOutlined />
                     </a-button>
-                    <a-popconfirm v-if="isAdmin" title="确定要删除该变量吗？" ok-text="确定" cancel-text="取消"
+                    <a-popconfirm title="确定要删除该变量吗？" ok-text="确定" cancel-text="取消"
                       @confirm="deleteVar(record, 'system')">
                       <a-button size="small" type="link" danger>
                         <DeleteOutlined />
                       </a-button>
                     </a-popconfirm>
-                    <a-tooltip v-else title="需要管理员权限">
-                      <a-button size="small" type="link" danger :disabled="true">
-                        <DeleteOutlined />
-                      </a-button>
-                    </a-tooltip>
                   </a-space>
                 </template>
               </template>
@@ -273,7 +257,7 @@
           </div>
         </a-form-item>
 
-        <a-alert v-if="formData.scope === 'system'" message="修改系统环境变量需要管理员权限" type="warning" show-icon />
+        <a-alert v-if="formData.scope === 'system' && !isAdmin" message="修改系统环境变量将弹出 UAC 授权窗口" type="info" show-icon />
       </a-form>
     </a-modal>
   </div>

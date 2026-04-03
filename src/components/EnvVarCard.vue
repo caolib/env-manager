@@ -25,20 +25,10 @@
                     <a-button size="small" type="link" @click="copyAll" title="复制 KEY=VALUE">
                         <CopyOutlined />
                     </a-button>
-                    <a-tooltip v-if="isReadonly" title="需要管理员权限才能编辑系统环境变量">
-                        <a-button size="small" type="link" :disabled="isReadonly">
-                            <EditOutlined />
-                        </a-button>
-                    </a-tooltip>
-                    <a-button v-else size="small" type="link" @click="handleEditClick">
+                    <a-button size="small" type="link" @click="handleEditClick">
                         <EditOutlined />
                     </a-button>
-                    <a-tooltip v-if="isReadonly" title="需要管理员权限才能删除系统环境变量">
-                        <a-button size="small" type="link" danger :disabled="isReadonly">
-                            <DeleteOutlined />
-                        </a-button>
-                    </a-tooltip>
-                    <a-popconfirm v-else title="确定要删除该变量吗？" ok-text="确定" cancel-text="取消"
+                    <a-popconfirm title="确定要删除该变量吗？" ok-text="确定" cancel-text="取消"
                         @confirm="$emit('delete', envVar)">
                         <a-button size="small" type="link" danger>
                             <DeleteOutlined />

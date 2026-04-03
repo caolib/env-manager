@@ -1,4 +1,5 @@
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 const { exec, execFileSync } = require('node:child_process')
 
@@ -17,6 +18,11 @@ function isValidURL(str) {
 function getRegExePath() {
   const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || 'C:\\Windows'
   return path.join(systemRoot, 'System32', 'reg.exe')
+}
+
+function getPowerShellPath() {
+  const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || 'C:\\Windows'
+  return path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
 }
 
 function regQuery(keyPath) {
@@ -45,6 +51,154 @@ function regDelete(scope, name) {
     maxBuffer: 1024 * 1024 * 50,
     stdio: ['ignore', 'ignore', 'pipe']
   })
+}
+
+/**
+ * 通过 UAC 提权执行环境变量修改
+ * 用 Base64 传递参数避免命令行的引号转义问题，并检查提升进程的退出码
+ */
+function regAddElevated(scope, name, value) {
+  const isSystem = scope.includes('HKLM') || scope.includes('SYSTEM')
+  
+  const base64Name = Buffer.from(name, 'utf-8').toString('base64')
+  const base64Value = Buffer.from(value, 'utf-8').toString('base64')
+  
+  // 构建临时执行脚本 (无命令行转义困扰)
+  const ps1File = path.join(os.tmpdir(), '_utools_env_uac_add_' + Date.now() + '.ps1')
+  const psScript = `
+$ErrorActionPreference = 'Stop'
+try {
+  $name = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${base64Name}'))
+  $value = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${base64Value}'))
+  $keyPath = '${isSystem ? 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment' : 'Environment'}'
+  $baseKey = ${isSystem ? '[Microsoft.Win32.Registry]::LocalMachine' : '[Microsoft.Win32.Registry]::CurrentUser'}
+  $key = $baseKey.OpenSubKey($keyPath, $true)
+  if ($null -eq $key) { exit 1 }
+  $key.SetValue($name, $value, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+  $key.Close()
+  exit 0
+} catch {
+  exit 1
+}
+`
+  
+  fs.writeFileSync(ps1File, psScript, { encoding: 'utf-8' })
+  
+  const runPsCmd = `
+$ErrorActionPreference = 'Stop'
+try {
+  $proc = Start-Process powershell.exe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '${ps1File.replace(/'/g, "''")}' -Verb RunAs -Wait -WindowStyle Hidden -PassThru
+  if ($null -ne $proc) {
+    exit $proc.ExitCode
+  }
+} catch {
+  exit 1223
+}
+exit 1
+`
+  
+  try {
+    execFileSync(getPowerShellPath(), ['-NoProfile', '-NonInteractive', '-Command', runPsCmd], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      maxBuffer: 1024 * 1024 * 50,
+      timeout: 120000 // 2分钟超时容等待用户 UAC 弹窗处理
+    })
+  } catch (error) {
+    if (error.status === 1223 || (error.stderr && (error.stderr.includes('Canceled') || error.stderr.includes('被用户取消')))) {
+      throw new Error('Canceled by user')
+    }
+    throw new Error('提权执行修改失败，退出码: ' + error.status)
+  } finally {
+    try { fs.unlinkSync(ps1File) } catch (_) { /* 忽略 */ }
+  }
+}
+
+/**
+ * 通过 UAC 提权执行环境变量删除操作
+ */
+function regDeleteElevated(scope, name) {
+  const isSystem = scope.includes('HKLM') || scope.includes('SYSTEM')
+  
+  const base64Name = Buffer.from(name, 'utf-8').toString('base64')
+  const ps1File = path.join(os.tmpdir(), '_utools_env_uac_del_' + Date.now() + '.ps1')
+  
+  const psScript = `
+$ErrorActionPreference = 'Stop'
+try {
+  $name = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${base64Name}'))
+  $keyPath = '${isSystem ? 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment' : 'Environment'}'
+  $baseKey = ${isSystem ? '[Microsoft.Win32.Registry]::LocalMachine' : '[Microsoft.Win32.Registry]::CurrentUser'}
+  $key = $baseKey.OpenSubKey($keyPath, $true)
+  if ($null -ne $key) {
+    if ($null -ne $key.GetValue($name)) {
+      $key.DeleteValue($name)
+    }
+    $key.Close()
+  }
+  exit 0
+} catch {
+  exit 1
+}
+`
+  
+  fs.writeFileSync(ps1File, psScript, { encoding: 'utf-8' })
+  
+  const runPsCmd = `
+$ErrorActionPreference = 'Stop'
+try {
+  $proc = Start-Process powershell.exe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '${ps1File.replace(/'/g, "''")}' -Verb RunAs -Wait -WindowStyle Hidden -PassThru
+  if ($null -ne $proc) {
+    exit $proc.ExitCode
+  }
+} catch {
+  exit 1223
+}
+exit 1
+`
+  
+  try {
+    execFileSync(getPowerShellPath(), ['-NoProfile', '-NonInteractive', '-Command', runPsCmd], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      maxBuffer: 1024 * 1024 * 50,
+      timeout: 120000
+    })
+  } catch (error) {
+    if (error.status === 1223 || (error.stderr && (error.stderr.includes('Canceled') || error.stderr.includes('被用户取消')))) {
+      throw new Error('Canceled by user')
+    }
+    throw new Error('提权执行删除失败，退出码: ' + error.status)
+  } finally {
+    try { fs.unlinkSync(ps1File) } catch (_) { /* 忽略 */ }
+  }
+}
+
+// 缓存管理员权限检查结果（在整个 preload 生命周期内）
+let _isAdminCached = null
+
+function isCurrentProcessAdmin() {
+  if (_isAdminCached !== null) return _isAdminCached
+  try {
+    const testKey = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
+    const testVarName = '_UTOOLS_ADMIN_TEST_'
+    execFileSync(getRegExePath(), ['add', testKey, '/v', testVarName, '/t', 'REG_SZ', '/d', 'test', '/f'], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      maxBuffer: 1024 * 1024 * 50,
+      stdio: ['ignore', 'ignore', 'pipe']
+    })
+    execFileSync(getRegExePath(), ['delete', testKey, '/v', testVarName, '/f'], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      maxBuffer: 1024 * 1024 * 50,
+      stdio: ['ignore', 'ignore', 'pipe']
+    })
+    _isAdminCached = true
+  } catch (_) {
+    _isAdminCached = false
+  }
+  return _isAdminCached
 }
 
 // 通过 window 对象向渲染进程注入 nodejs 能力
@@ -128,16 +282,23 @@ window.services = {
 
     try {
       const scope = isSystem ? 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment' : 'HKCU\\Environment'
-      regAdd(scope, name, value)
-
+      
+      if (isSystem && !isCurrentProcessAdmin()) {
+        regAddElevated(scope, name, value)
+      } else {
+        regAdd(scope, name, value)
+      }
 
       return { success: true }
     } catch (error) {
       console.error('设置环境变量失败:', error)
       const errorMsg = error.message || error.toString()
-      // 检查是否是权限问题 - 支持中文和英文错误信息
+      // 如果是被 PowerShell 错误处理，或者提权失败的情况
+      if (errorMsg.includes('Canceled by user') || errorMsg.includes('被用户取消')) {
+        throw new Error('操作已取消：用户拒绝了 UAC 授权')
+      }
       if (errorMsg.includes('Access is denied') || errorMsg.includes('拒绝访问') || errorMsg.indexOf('拒绝') !== -1 || errorMsg.includes('denied')) {
-        throw new Error('权限不足：修改系统环境变量需要以管理员身份运行 uTools')
+        throw new Error('权限不足：提权失败或被拒绝')
       }
       throw new Error('设置环境变量失败: ' + errorMsg)
     }
@@ -151,16 +312,22 @@ window.services = {
 
     try {
       const scope = isSystem ? 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment' : 'HKCU\\Environment'
-      regDelete(scope, name)
-
+      
+      if (isSystem && !isCurrentProcessAdmin()) {
+        regDeleteElevated(scope, name)
+      } else {
+        regDelete(scope, name)
+      }
 
       return { success: true }
     } catch (error) {
       console.error('删除环境变量失败:', error)
       const errorMsg = error.message || error.toString()
-      // 检查是否是权限问题 - 支持中文和英文错误信息
+      if (errorMsg.includes('Canceled by user') || errorMsg.includes('被用户取消')) {
+        throw new Error('操作已取消：用户拒绝了 UAC 授权')
+      }
       if (errorMsg.includes('Access is denied') || errorMsg.includes('拒绝访问') || errorMsg.indexOf('拒绝') !== -1 || errorMsg.includes('denied')) {
-        throw new Error('权限不足：删除系统环境变量需要以管理员身份运行 uTools')
+        throw new Error('权限不足：提权失败或被拒绝')
       }
       throw new Error('删除环境变量失败: ' + errorMsg)
     }
@@ -172,32 +339,7 @@ window.services = {
    * 检查是否有管理员权限
    */
   checkAdminPrivileges: function () {
-    try {
-      // 尝试写入测试以验证真实权限
-      const testKey = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
-      const testVarName = '_UTOOLS_ADMIN_TEST_'
-
-      // 尝试创建一个测试变量
-      execFileSync(getRegExePath(), ['add', testKey, '/v', testVarName, '/t', 'REG_SZ', '/d', 'test', '/f'], {
-        encoding: 'utf-8',
-        windowsHide: true,
-        maxBuffer: 1024 * 1024 * 50,
-        stdio: ['ignore', 'ignore', 'pipe']
-      })
-
-      // 立即删除测试变量
-      execFileSync(getRegExePath(), ['delete', testKey, '/v', testVarName, '/f'], {
-        encoding: 'utf-8',
-        windowsHide: true,
-        maxBuffer: 1024 * 1024 * 50,
-        stdio: ['ignore', 'ignore', 'pipe']
-      })
-
-      return true
-    } catch (error) {
-      // 如果写入失败,说明没有管理员权限
-      return false
-    }
+    return isCurrentProcessAdmin()
   },
 
   /**
