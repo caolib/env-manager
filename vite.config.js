@@ -8,7 +8,9 @@ import path from 'path'
 export default defineConfig({
   plugins: [
     vue(),
-    VueDevTools(),
+    VueDevTools({
+      launchEditor: 'cursor'
+    }),
     alias({
       entries: [
         { find: '@', replacement: path.resolve(__dirname, 'src') }
