@@ -35,6 +35,68 @@
     <!-- 环境变量列表 -->
     <div class="content">
       <a-collapse v-model:activeKey="activeKeys" :bordered="false">
+        <!-- 系统 Path 变量 -->
+        <a-collapse-panel key="systemPath">
+          <template #header>
+            <div class="panel-header">
+              <span class="panel-title">
+                <WindowsOutlined />
+                系统 Path 变量
+                <a-tag>{{ systemPathVars.length }}</a-tag>
+              </span>
+            </div>
+          </template>
+
+          <div v-if="filteredSystemPathVars.length > 0" class="path-table-stack">
+            <a-collapse v-model:activeKey="systemPathVarActiveKeys" :bordered="false" class="path-var-collapse">
+              <a-collapse-panel v-for="row in filteredSystemPathVars" :key="getPathVarPanelKey('system', row)">
+                <template #header>
+                  <div class="path-var-panel-header">
+                    <span class="path-var-panel-name">{{ row.name }}</span>
+                    <a-tag>{{ getPathVarItemCount(row) }} 项</a-tag>
+                  </div>
+                </template>
+
+                <PathVarTable :env-var="row" :disabled="row.disabled"
+                  @delete="(row) => deleteVarDirect(row, 'system')"
+                  @saveDirect="(row) => saveDirectVar(row, 'system')" />
+              </a-collapse-panel>
+            </a-collapse>
+          </div>
+          <div v-else class="empty-path-section">未找到系统 Path 变量</div>
+        </a-collapse-panel>
+
+        <!-- 用户 Path 变量 -->
+        <a-collapse-panel key="userPath">
+          <template #header>
+            <div class="panel-header">
+              <span class="panel-title">
+                <UserOutlined />
+                用户 Path 变量
+                <a-tag>{{ userPathVars.length }}</a-tag>
+              </span>
+            </div>
+          </template>
+
+          <div v-if="filteredUserPathVars.length > 0" class="path-table-stack">
+            <a-collapse v-model:activeKey="userPathVarActiveKeys" :bordered="false" class="path-var-collapse">
+              <a-collapse-panel v-for="row in filteredUserPathVars" :key="getPathVarPanelKey('user', row)">
+                <template #header>
+                  <div class="path-var-panel-header">
+                    <span class="path-var-panel-name">{{ row.name }}</span>
+                    <a-tag>{{ getPathVarItemCount(row) }} 项</a-tag>
+                  </div>
+                </template>
+
+                <PathVarTable :env-var="row" :disabled="row.disabled"
+                  @delete="(row) => deleteVarDirect(row, 'user')"
+                  @saveDirect="(row) => saveDirectVar(row, 'user')" />
+              </a-collapse-panel>
+            </a-collapse>
+          </div>
+          <div v-else class="empty-path-section">未找到用户 Path 变量</div>
+        </a-collapse-panel>
+
         <!-- 系统环境变量 -->
         <a-collapse-panel key="system">
           <template #header>
@@ -42,7 +104,7 @@
               <span class="panel-title">
                 <WindowsOutlined />
                 系统环境变量
-                <a-tag>{{ systemVars.length }}</a-tag>
+                <a-tag>{{ systemNormalVars.length }}</a-tag>
               </span>
               <a-button size="small" type="primary" @click.stop="showAddSystemDialog">
                 <PlusOutlined />
@@ -111,7 +173,7 @@
               <span class="panel-title">
                 <UserOutlined />
                 用户环境变量
-                <a-tag>{{ userVars.length }}</a-tag>
+                <a-tag>{{ userNormalVars.length }}</a-tag>
               </span>
               <a-button size="small" type="primary" @click.stop="showAddUserDialog">
                 <PlusOutlined />
@@ -283,6 +345,7 @@ import {
   LinkOutlined
 } from '@ant-design/icons-vue';
 import EnvVarCard from './EnvVarCard.vue';
+import PathVarTable from './PathVarTable.vue';
 import { useSettingsStore } from '../stores/settings';
 import { useAlternativesStore } from '../stores/alternatives';
 import { getData, setData } from '../utils/store';
@@ -395,7 +458,9 @@ const searchKeyword = ref('');
 const loading = ref(false);
 const submitting = ref(false);
 const isAdmin = ref(false);
-const activeKeys = ref(['user']); // 默认只展开用户环境变量
+const activeKeys = ref(['userPath', 'user']); // 默认展开用户 Path 和用户环境变量
+const systemPathVarActiveKeys = ref([]);
+const userPathVarActiveKeys = ref([]);
 const pathChecking = ref(false);
 
 // 对话框相关
@@ -565,13 +630,71 @@ function updateAlternativeNote(index, newNote) {
 
 
 // 计算属性：过滤后的变量
+const mergedSystemVars = computed(() => {
+  return mergeVars(systemVars.value, 'system');
+});
+
+const mergedUserVars = computed(() => {
+  return mergeVars(userVars.value, 'user');
+});
+
+const systemPathVars = computed(() => {
+  return mergedSystemVars.value.filter(isPathVar);
+});
+
+const userPathVars = computed(() => {
+  return mergedUserVars.value.filter(isPathVar);
+});
+
+const systemNormalVars = computed(() => {
+  return mergedSystemVars.value.filter(v => !isPathVar(v));
+});
+
+const userNormalVars = computed(() => {
+  return mergedUserVars.value.filter(v => !isPathVar(v));
+});
+
 const filteredSystemVars = computed(() => {
-  return mergeAndFilterVars(systemVars.value, 'system');
+  return filterAndSortVars(systemNormalVars.value);
 });
 
 const filteredUserVars = computed(() => {
-  return mergeAndFilterVars(userVars.value, 'user');
+  return filterAndSortVars(userNormalVars.value);
 });
+
+const filteredSystemPathVars = computed(() => {
+  return filterAndSortVars(systemPathVars.value);
+});
+
+const filteredUserPathVars = computed(() => {
+  return filterAndSortVars(userPathVars.value);
+});
+
+function getPathVarPanelKey(scope, row) {
+  return `${scope}:${row.name}`;
+}
+
+function isMainPathVar(row) {
+  return row.name?.trim().toLowerCase() === 'path';
+}
+
+function getDefaultPathVarActiveKeys(vars, scope) {
+  return vars
+    .filter(isMainPathVar)
+    .map(row => getPathVarPanelKey(scope, row));
+}
+
+function getPathVarItemCount(row) {
+  return (row.value || '').split(';').filter(Boolean).length;
+}
+
+watch(filteredSystemPathVars, (vars) => {
+  systemPathVarActiveKeys.value = getDefaultPathVarActiveKeys(vars, 'system');
+}, { immediate: true });
+
+watch(filteredUserPathVars, (vars) => {
+  userPathVarActiveKeys.value = getDefaultPathVarActiveKeys(vars, 'user');
+}, { immediate: true });
 
 // 表格列定义
 const tableColumns = [
@@ -714,8 +837,8 @@ function openURL(value) {
   }
 }
 
-// 合并并过滤变量（激活的 + 禁用的）
-function mergeAndFilterVars(activeVars, scope) {
+// 合并变量（激活的 + 禁用的）
+function mergeVars(activeVars, scope) {
   // 1. 从注册表获取的激活变量
   const active = activeVars.map(v => ({ ...v, disabled: false }));
 
@@ -731,18 +854,20 @@ function mergeAndFilterVars(activeVars, scope) {
   // 3. 合并（确保禁用变量不会与激活变量重复）
   const disabledNames = new Set(disabled.map(v => v.name));
   const activeFiltered = active.filter(v => !disabledNames.has(v.name));
-  const merged = [...activeFiltered, ...disabled];
+  return [...activeFiltered, ...disabled];
+}
 
-  // 4. 应用搜索过滤
-  let filtered = merged;
+function filterAndSortVars(vars) {
+  // 1. 应用搜索过滤
+  let filtered = vars;
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase();
-    filtered = merged.filter(v => {
+    filtered = vars.filter(v => {
       return v.name.toLowerCase().includes(keyword) || v.value.toLowerCase().includes(keyword);
     });
   }
 
-  // 5. 排序：启用的 Path 变量 -> 启用的普通变量 -> 禁用的 Path 变量 -> 禁用的普通变量
+  // 2. 排序：启用变量 -> 禁用变量；同状态下普通变量在前，Path 变量在后
   return filtered.sort((a, b) => {
     // 首先按禁用状态排序（启用在前）
     if (a.disabled !== b.disabled) {
@@ -897,14 +1022,14 @@ function checkAdminPrivileges() {
     isAdmin.value = window.services.checkAdminPrivileges();
     // 根据管理员权限设置默认展开的面板
     if (isAdmin.value) {
-      activeKeys.value = ['system', 'user']; // 有管理员权限时展开所有
+      activeKeys.value = ['systemPath', 'userPath', 'system', 'user']; // 有管理员权限时展开所有
     } else {
-      activeKeys.value = ['user']; // 无管理员权限时只展开用户变量
+      activeKeys.value = ['userPath', 'user']; // 无管理员权限时展开用户 Path 和用户变量
     }
   } catch (error) {
     console.error('检查管理员权限失败:', error);
     isAdmin.value = false;
-    activeKeys.value = ['user'];
+    activeKeys.value = ['userPath', 'user'];
   }
 }
 
@@ -1120,26 +1245,28 @@ async function deleteVar(row, scope) {
   Modal.confirm({
     title: '确认删除',
     content: `确定要删除变量 "${row.name}" 吗？此操作将从注册表和插件存储中永久删除该变量。`,
-    onOk: async () => {
-      try {
-        // 删除注册表中的变量
-        try {
-          await window.services.deleteEnvVar(row.name, scope === 'system');
-        } catch {
-          // 忽略删除失败（可能是禁用状态）
-        }
-        // 删除禁用存储
-        removeDisabledVar(scope, row.name);
-        // 同步清理备用值
-        alternativesStore.removeAllAlternatives(scope, row.name);
-        message.success(`变量 "${row.name}" 删除成功`);
-        await loadEnvVars();
-      } catch (error) {
-        message.error(`删除失败: ${error.message}`);
-        console.error('Error deleting env var:', error);
-      }
-    }
+    onOk: async () => deleteVarDirect(row, scope)
   });
+}
+
+async function deleteVarDirect(row, scope) {
+  try {
+    // 删除注册表中的变量
+    try {
+      await window.services.deleteEnvVar(row.name, scope === 'system');
+    } catch {
+      // 忽略删除失败（可能是禁用状态）
+    }
+    // 删除禁用存储
+    removeDisabledVar(scope, row.name);
+    // 同步清理备用值
+    alternativesStore.removeAllAlternatives(scope, row.name);
+    message.success(`变量 "${row.name}" 删除成功`);
+    await loadEnvVars();
+  } catch (error) {
+    message.error(`删除失败: ${error.message}`);
+    console.error('Error deleting env var:', error);
+  }
 }
 
 
@@ -1222,7 +1349,7 @@ function setupSubInput() {
       searchKeyword.value = text;
       // 搜索时自动展开所有面板
       if (text) {
-        activeKeys.value = ['system', 'user'];
+        activeKeys.value = ['systemPath', 'userPath', 'system', 'user'];
       }
     }, '搜索环境变量...');
   }
@@ -1286,6 +1413,35 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+}
+
+.path-table-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.path-var-collapse {
+  width: 100%;
+}
+
+.path-var-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.path-var-panel-name {
+  font-weight: 600;
+}
+
+.empty-path-section {
+  padding: 10px 12px;
+  border: 1px dashed var(--ant-color-border);
+  border-radius: 6px;
+  color: var(--ant-color-text-tertiary);
+  font-size: 13px;
 }
 
 

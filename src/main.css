@@ -8,16 +8,20 @@
 :root[data-theme="light"] {
   --bg-color: #f4f4f4;
   --text-color: #000;
-  --scrollbar-track: #f4f4f4;
-  --scrollbar-thumb: #666;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.22);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.34);
+  color-scheme: light;
 }
 
 /* 深色主题 */
 :root[data-theme="dark"] {
   --bg-color: #303133;
   --text-color: #e6e6e6;
-  --scrollbar-track: #303133;
-  --scrollbar-thumb: #666;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+  color-scheme: dark;
 }
 
 
@@ -60,11 +64,27 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-::-webkit-scrollbar-track-piece {
-  background-color: var(--scrollbar-track);
+* {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar-thumb);
-  border-color: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-track-piece,
+::-webkit-scrollbar-corner {
+  background-color: var(--scrollbar-track);
 }
