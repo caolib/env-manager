@@ -1158,32 +1158,9 @@ async function checkAllPaths() {
     for (const envVar of allVars) {
       const value = envVar.value?.trim();
       if (!value) continue;
+      if (isPathVar(envVar)) continue;
 
-      // 检查是否为分号分隔的路径列表
-      if (value.includes(';') && value.split(';').filter(Boolean).length > 1) {
-        const paths = value.split(';').filter(Boolean);
-        for (const path of paths) {
-          if (window.services?.isPathLike(path)) {
-            // 检查是否为目录(不是文件)
-            const dirStatus = window.services?.isDirectory ? window.services.isDirectory(path) : null;
-            if (dirStatus === false) continue; // 跳过文件
-
-            totalPaths++;
-            const exists = window.services.checkPathExists(path);
-            // 清理 file: 前缀用于显示
-            const cleanPath = path.replace(/^file:/, '');
-            if (exists) {
-              existCount++;
-            } else {
-              notExistCount++;
-              notExistDetails.push({
-                varName: envVar.name,
-                path: cleanPath
-              });
-            }
-          }
-        }
-      } else if (window.services?.isPathLike(value)) {
+      if (window.services?.isPathLike(value)) {
         // 检查是否为目录(不是文件)
         const dirStatus = window.services?.isDirectory ? window.services.isDirectory(value) : null;
         if (dirStatus === false) continue; // 跳过文件

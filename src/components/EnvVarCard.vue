@@ -57,7 +57,7 @@
                         <a-space>
                             <a-button size="small" type="primary" @click="savePath">保存</a-button>
                             <a-button size="small" @click="cancelEditPath">取消</a-button>
-                            <a-button size="small" @click="removeDuplicates">去重</a-button>
+                            <a-button size="small" @click="checkEditPaths">路径检测</a-button>
                             <a-button v-if="isDirty" size="small" @click="showDiff">diff</a-button>
                             <a-button size="small" @click="addPath">
                                 <PlusOutlined />
@@ -105,9 +105,8 @@
 
 <script setup>
 import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined, EyeOutlined, EyeInvisibleOutlined, FolderOpenOutlined, LinkOutlined } from '@ant-design/icons-vue';
-import { computed, ref, watch, provide, inject } from 'vue';
-import { message, Modal } from 'ant-design-vue';
-import { h } from 'vue';
+import { computed, defineComponent, h, ref, watch, provide, inject } from 'vue';
+import { Checkbox, message, Modal } from 'ant-design-vue';
 import PathDiffModal from './PathDiffModal.vue';
 
 // 工具函数：HTML 转义
@@ -499,27 +498,133 @@ const normalPathStatus = computed(() => {
     return normalPathCheckResult.value;
 });
 
-// Path 去重
-function removeDuplicates() {
+function removeDuplicateEditPaths() {
     const seen = new Set();
     const unique = [];
+    let removedCount = 0;
 
     for (const item of editList.value) {
         const normalized = item.trim().toLowerCase();
-        if (normalized && !seen.has(normalized)) {
+        if (!normalized) {
+            unique.push(item);
+        } else if (!seen.has(normalized)) {
             seen.add(normalized);
             unique.push(item.trim());
+        } else {
+            removedCount++;
         }
     }
 
-    const removedCount = editList.value.length - unique.length;
-    editList.value = unique;
-
     if (removedCount > 0) {
-        message.success(`已去除 ${removedCount} 个重复项`);
+        editList.value = unique;
+    }
+
+    return removedCount;
+}
+
+function showMissingPathCleanupModal(missingPaths, duplicateRemovedCount) {
+    const selectedIndexes = ref(missingPaths.map(item => item.index));
+
+    const MissingPathCleanupContent = defineComponent({
+        name: 'MissingPathCleanupContent',
+        setup() {
+            const allSelected = computed(() => selectedIndexes.value.length === missingPaths.length);
+            const indeterminate = computed(() => selectedIndexes.value.length > 0 && selectedIndexes.value.length < missingPaths.length);
+
+            function toggleAll(event) {
+                selectedIndexes.value = event.target.checked ? missingPaths.map(item => item.index) : [];
+            }
+
+            function toggleOne(index, checked) {
+                if (checked) {
+                    selectedIndexes.value = selectedIndexes.value.includes(index)
+                        ? selectedIndexes.value
+                        : [...selectedIndexes.value, index];
+                } else {
+                    selectedIndexes.value = selectedIndexes.value.filter(item => item !== index);
+                }
+            }
+
+            return () => h('div', {}, [
+                h('p', { style: { marginBottom: '8px' } }, `变量名: ${props.envVar.name}`),
+                duplicateRemovedCount > 0
+                    ? h('p', { style: { marginBottom: '8px', color: '#1677ff' } }, `已自动删除重复路径: ${duplicateRemovedCount} 项`)
+                    : null,
+                h('p', { style: { marginBottom: '12px', color: '#ff4d4f', fontWeight: 'bold' } }, `发现不存在路径: ${missingPaths.length} 项`),
+                h('div', { style: { marginBottom: '8px' } }, [
+                    h(Checkbox, {
+                        checked: allSelected.value,
+                        indeterminate: indeterminate.value,
+                        onChange: toggleAll
+                    }, () => `全选 (${selectedIndexes.value.length}/${missingPaths.length})`)
+                ]),
+                h('div', { style: { maxHeight: '320px', overflowY: 'auto', border: '1px solid var(--ant-color-border)', borderRadius: '4px', padding: '8px' } },
+                    missingPaths.map(item =>
+                        h('div', { style: { marginBottom: '8px' } }, [
+                            h(Checkbox, {
+                                checked: selectedIndexes.value.includes(item.index),
+                                onChange: event => toggleOne(item.index, event.target.checked)
+                            }, () => h('span', { style: { fontSize: '12px', wordBreak: 'break-all' } }, item.path))
+                        ])
+                    )
+                )
+            ]);
+        }
+    });
+
+    Modal.confirm({
+        title: '路径检测结果',
+        width: 720,
+        content: h(MissingPathCleanupContent),
+        okText: '删除选中项',
+        cancelText: '保留',
+        onOk() {
+            if (selectedIndexes.value.length === 0) {
+                message.info('未删除任何路径');
+                return;
+            }
+
+            const removeIndexes = new Set(selectedIndexes.value);
+            editList.value = editList.value.filter((_, index) => !removeIndexes.has(index));
+            isDirty.value = true;
+            message.success(`已删除 ${removeIndexes.size} 个不存在的路径`);
+        }
+    });
+}
+
+function checkEditPaths() {
+    const duplicateRemovedCount = removeDuplicateEditPaths();
+    const results = {};
+    const missingPaths = [];
+
+    editList.value.forEach((item, index) => {
+        if (!window.services?.isPathLike(item)) return;
+
+        const exists = window.services.checkPathExists(item);
+        results[item] = exists;
+        if (!exists) {
+            missingPaths.push({
+                index,
+                path: item
+            });
+        }
+    });
+
+    pathCheckResults.value = results;
+
+    if (duplicateRemovedCount > 0) {
         isDirty.value = true;
+    }
+
+    if (missingPaths.length > 0) {
+        showMissingPathCleanupModal(missingPaths, duplicateRemovedCount);
+        return;
+    }
+
+    if (duplicateRemovedCount > 0) {
+        message.success(`检测完成，已删除 ${duplicateRemovedCount} 个重复路径，未发现不存在路径`);
     } else {
-        message.info('没有发现重复项');
+        message.success('检测完成，未发现重复或不存在的路径');
     }
 }
 </script>
