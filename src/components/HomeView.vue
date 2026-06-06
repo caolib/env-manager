@@ -159,13 +159,15 @@
               size="small" :rowKey="(record) => record.name" :scroll="{ x: 'max-content' }">
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'name'">
-                  <span v-html="renderHighlight(record.name)" class="clickable" @click="copyText(record.name)"
-                    title="点击复制"></span>
+                  <span class="clickable" @click="copyText(record.name)" title="点击复制">
+                    <HighlightText :text="record.name" :keyword="searchKeyword" />
+                  </span>
                   <a-tag v-if="record.disabled" color="default" style="margin-left: 8px;">禁用</a-tag>
                 </template>
                 <template v-else-if="column.key === 'value'">
-                  <span v-html="renderHighlight(renderValue(record))" class="clickable" @click="copyText(record.value)"
-                    title="点击复制"></span>
+                  <span class="clickable" @click="copyText(record.value)" title="点击复制">
+                    <HighlightText :text="renderValue(record)" :keyword="searchKeyword" />
+                  </span>
                 </template>
                 <template v-else-if="column.key === 'actions'">
                   <a-space :size="4">
@@ -227,13 +229,15 @@
               size="small" :rowKey="(record) => record.name" :scroll="{ x: 'max-content' }">
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'name'">
-                  <span v-html="renderHighlight(record.name)" class="clickable" @click="copyText(record.name)"
-                    title="点击复制"></span>
+                  <span class="clickable" @click="copyText(record.name)" title="点击复制">
+                    <HighlightText :text="record.name" :keyword="searchKeyword" />
+                  </span>
                   <a-tag v-if="record.disabled" color="default" style="margin-left: 8px;">禁用</a-tag>
                 </template>
                 <template v-else-if="column.key === 'value'">
-                  <span v-html="renderHighlight(renderValue(record))" class="clickable" @click="copyText(record.value)"
-                    title="点击复制"></span>
+                  <span class="clickable" @click="copyText(record.value)" title="点击复制">
+                    <HighlightText :text="renderValue(record)" :keyword="searchKeyword" />
+                  </span>
                 </template>
                 <template v-else-if="column.key === 'actions'">
                   <a-space :size="4">
@@ -376,6 +380,7 @@ import {
   LinkOutlined
 } from '@ant-design/icons-vue';
 import EnvVarCard from './EnvVarCard.vue';
+import HighlightText from './HighlightText.vue';
 import PathVarTable from './PathVarTable.vue';
 import { useSettingsStore } from '../stores/settings';
 import { useAlternativesStore } from '../stores/alternatives';
@@ -793,38 +798,6 @@ const tableColumns = [
     fixed: 'right'
   }
 ];
-
-// HTML 转义函数
-function escapeHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-// 高亮关键词函数
-function renderHighlight(text) {
-  if (!text) return '';
-  if (!searchKeyword.value) return escapeHtml(text);
-  const src = String(text);
-  const k = String(searchKeyword.value);
-  const srcLower = src.toLowerCase();
-  const kLower = k.toLowerCase();
-  let i = 0;
-  let from = 0;
-  let out = '';
-  while ((i = srcLower.indexOf(kLower, from)) !== -1) {
-    out += escapeHtml(src.slice(from, i));
-    const match = src.slice(i, i + k.length);
-    out += `<mark style="background-color: yellow; color: red; padding: 0;">${escapeHtml(match)}</mark>`;
-    from = i + k.length;
-  }
-  out += escapeHtml(src.slice(from));
-  return out;
-}
 
 // 渲染值（处理敏感信息）
 function renderValue(record) {

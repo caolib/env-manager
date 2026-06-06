@@ -6,7 +6,9 @@
         <template #title>
             <div class="card-header">
                 <span class="var-name clickable" :class="{ 'disabled-text': props.disabled || props.envVar.disabled }"
-                    v-html="renderName(envVar.name)" @click="copyKey" title="点击复制变量名"></span>
+                    @click="copyKey" title="点击复制变量名">
+                    <HighlightText :text="envVar.name" :keyword="props.highlight" />
+                </span>
                 <a-tag v-if="props.disabled || props.envVar.disabled" color="default" style="margin-left: 8px;">
                     禁用
                 </a-tag>
@@ -44,7 +46,9 @@
                 <div v-if="!editingPath" class="path-list-container" @click="startEditPath">
                     <ul class="path-list">
                         <li v-for="(item, idx) in pathList" :key="idx" class="path-item">
-                            <span v-html="renderPathItem(item)"></span>
+                            <span>
+                                <HighlightText :text="item" :keyword="props.highlight" />
+                            </span>
                             <span v-if="pathCheckResults[item] === false" class="path-status path-not-exist"
                                 title="路径不存在">✗</span>
                             <span v-else-if="pathCheckResults[item] === true" class="path-status path-exist"
@@ -85,8 +89,9 @@
             <!-- 普通变量显示 -->
             <template v-else>
                 <div class="normal-value-wrapper">
-                    <div class="normal-value clickable" v-html="renderValue(displayValue)" @click="copyValue"
-                        title="点击复制变量值"></div>
+                    <div class="normal-value clickable" @click="copyValue" title="点击复制变量值">
+                        <HighlightText :text="displayValue" :keyword="props.highlight" />
+                    </div>
                     <span v-if="normalPathCheckResult === false" class="path-status path-not-exist"
                         title="路径不存在">✗</span>
                     <span v-else-if="normalPathCheckResult === true" class="path-status path-exist"
@@ -102,38 +107,7 @@ import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined, EyeOutlined, 
 import { computed, defineComponent, h, ref, watch, provide, inject } from 'vue';
 import { Checkbox, message, Modal } from '../ui';
 import PathDiffModal from './PathDiffModal.vue';
-
-// 工具函数：HTML 转义
-function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-// 工具函数：高亮关键词
-function highlightHtml(text, keyword) {
-    if (!text) return '';
-    if (!keyword) return escapeHtml(text);
-    const src = String(text);
-    const k = String(keyword);
-    const srcLower = src.toLowerCase();
-    const kLower = k.toLowerCase();
-    let i = 0;
-    let from = 0;
-    let out = '';
-    while ((i = srcLower.indexOf(kLower, from)) !== -1) {
-        out += escapeHtml(src.slice(from, i));
-        const match = src.slice(i, i + k.length);
-        out += `<mark style="background-color: yellow; color: red; padding: 0; ">${escapeHtml(match)}</mark>`;
-        from = i + k.length;
-    }
-    out += escapeHtml(src.slice(from));
-    return out;
-}
+import HighlightText from './HighlightText.vue';
 
 const props = defineProps({
     envVar: {
@@ -167,19 +141,6 @@ const emit = defineEmits(['edit', 'delete', 'saveDirect']);
 // 注入主题模式，供 PathDiffModal 使用
 const themeMode = inject('themeMode', 'light');
 provide('themeMode', themeMode);
-
-// 渲染函数 - 默认搜索全部(变量名和值)
-function renderName(name) {
-    return props.highlight ? highlightHtml(name, props.highlight) : escapeHtml(name);
-}
-
-function renderValue(value) {
-    return props.highlight ? highlightHtml(value, props.highlight) : escapeHtml(value);
-}
-
-function renderPathItem(item) {
-    return props.highlight ? highlightHtml(item, props.highlight) : escapeHtml(item);
-}
 
 // Path 变量相关
 const pathList = computed(() => {
@@ -392,102 +353,6 @@ watch(editList, (newVal) => {
     if (!editingPath.value) return;
     isDirty.value = newVal.join(';') !== pathList.value.join(';');
 }, { deep: true });
-
-// 判断是否可以检测路径
-const canCheckPath = computed(() => {
-    if (isSemicolonSeparatedValue.value) {
-        // Path 变量,检查是否有路径格式的项
-        return pathList.value.some(item => window.services?.isPathLike(item));
-    } else {
-        // 普通变量,检查是否为路径格式
-        const value = props.envVar.value?.trim();
-        return value && window.services?.isPathLike(value);
-    }
-});
-
-// 检查路径
-function checkPaths() {
-    if (isSemicolonSeparatedValue.value) {
-        // 检测 Path 变量
-        const results = {};
-        let existCount = 0;
-        let notExistCount = 0;
-        let notPathCount = 0;
-        const notExistPaths = [];
-
-        for (const item of pathList.value) {
-            if (window.services?.isPathLike(item)) {
-                const exists = window.services.checkPathExists(item);
-                results[item] = exists;
-                if (exists) {
-                    existCount++;
-                } else {
-                    notExistCount++;
-                    notExistPaths.push(item);
-                }
-            } else {
-                notPathCount++;
-            }
-        }
-
-        pathCheckResults.value = results;
-
-        // 显示结果
-        Modal.info({
-            title: '路径检测结果',
-            width: 600,
-            content: h('div', {}, [
-                h('p', { style: { marginBottom: '8px' } }, `变量名: ${props.envVar.name}`),
-                h('p', { style: { marginBottom: '8px' } }, `总计: ${pathList.value.length} 项`),
-                h('p', { style: { marginBottom: '8px', color: '#52c41a' } }, `✓ 存在: ${existCount} 项`),
-                h('p', { style: { marginBottom: '8px', color: '#ff4d4f' } }, `✗ 不存在: ${notExistCount} 项`),
-                notPathCount > 0 ? h('p', { style: { marginBottom: '8px', color: '#999' } }, `非路径格式: ${notPathCount} 项`) : null,
-                notExistPaths.length > 0 ? h('div', { style: { marginTop: '16px' } }, [
-                    h('h4', { style: { marginBottom: '8px' } }, '不存在的路径:'),
-                    h('ul', { style: { margin: 0, paddingLeft: '20px', maxHeight: '200px', overflowY: 'auto' } },
-                        notExistPaths.map(p => h('li', { style: { marginBottom: '4px', fontSize: '12px', wordBreak: 'break-all' } }, p))
-                    )
-                ]) : null
-            ])
-        });
-    } else {
-        // 检测普通变量
-        const value = props.envVar.value?.trim();
-        if (value && window.services?.isPathLike(value)) {
-            const exists = window.services.checkPathExists(value);
-            normalPathCheckResult.value = exists;
-
-            Modal.info({
-                title: '路径检测结果',
-                width: 600,
-                content: h('div', {}, [
-                    h('p', { style: { marginBottom: '8px' } }, `变量名: ${props.envVar.name}`),
-                    h('p', { style: { marginBottom: '8px' } }, `路径: ${value}`),
-                    h('p', {
-                        style: {
-                            marginBottom: '8px',
-                            color: exists ? '#52c41a' : '#ff4d4f',
-                            fontWeight: 'bold'
-                        }
-                    }, exists ? '✓ 路径存在' : '✗ 路径不存在')
-                ])
-            });
-        }
-    }
-}
-
-// 检查路径状态(仅用于内部逻辑)
-function checkPathStatus(pathStr) {
-    if (!window.services?.isPathLike(pathStr)) {
-        return null; // 不是路径格式
-    }
-    return window.services.checkPathExists(pathStr);
-}
-
-// 普通变量的路径状态(已废弃,保留用于兼容)
-const normalPathStatus = computed(() => {
-    return normalPathCheckResult.value;
-});
 
 function removeDuplicateEditPaths() {
     const seen = new Set();
