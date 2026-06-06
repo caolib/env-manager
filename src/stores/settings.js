@@ -11,21 +11,33 @@ const defaultSettings = {
     sensitiveKeywords: ['key', 'token', 'password', 'secret', 'credential', 'auth', 'apikey', 'api_key'],
     layoutMode: 'card', // 'card' | 'table'
     defaultExportFolder: '',
-    startupExportEnabled: false,
-    startupExportMaxFiles: 10
+    backupMaxFiles: 10
 }
 
 function normalizeMaxFiles(value) {
     const numberValue = Number(value)
-    if (!Number.isFinite(numberValue)) return defaultSettings.startupExportMaxFiles
+    if (!Number.isFinite(numberValue)) return defaultSettings.backupMaxFiles
     return Math.max(1, Math.floor(numberValue))
+}
+
+function normalizeSettings(saved) {
+    const merged = { ...defaultSettings, ...(saved || {}) }
+
+    if (saved && saved.backupMaxFiles === undefined && saved.startupExportMaxFiles !== undefined) {
+        merged.backupMaxFiles = saved.startupExportMaxFiles
+    }
+
+    delete merged.startupExportEnabled
+    delete merged.startupExportMaxFiles
+    merged.backupMaxFiles = normalizeMaxFiles(merged.backupMaxFiles)
+    return merged
 }
 
 // 从 dbStorage 加载设置
 const loadSettings = () => {
     const saved = getData(SETTINGS_KEY, null)
     if (saved) {
-        return { ...defaultSettings, ...saved }
+        return normalizeSettings(saved)
     }
     return { ...defaultSettings }
 }
@@ -73,14 +85,9 @@ export function useSettingsStore() {
         set: (val) => { settings.value.defaultExportFolder = val || '' }
     })
 
-    const startupExportEnabled = computed({
-        get: () => !!settings.value.startupExportEnabled,
-        set: (val) => { settings.value.startupExportEnabled = !!val }
-    })
-
-    const startupExportMaxFiles = computed({
-        get: () => normalizeMaxFiles(settings.value.startupExportMaxFiles),
-        set: (val) => { settings.value.startupExportMaxFiles = normalizeMaxFiles(val) }
+    const backupMaxFiles = computed({
+        get: () => normalizeMaxFiles(settings.value.backupMaxFiles),
+        set: (val) => { settings.value.backupMaxFiles = normalizeMaxFiles(val) }
     })
 
     const setTheme = (theme) => { settings.value.theme = theme }
@@ -88,8 +95,7 @@ export function useSettingsStore() {
     const setSensitiveKeywords = (keywords) => { settings.value.sensitiveKeywords = keywords }
     const setLayoutMode = (mode) => { settings.value.layoutMode = mode }
     const setDefaultExportFolder = (folder) => { settings.value.defaultExportFolder = folder || '' }
-    const setStartupExportEnabled = (enabled) => { settings.value.startupExportEnabled = !!enabled }
-    const setStartupExportMaxFiles = (maxFiles) => { settings.value.startupExportMaxFiles = normalizeMaxFiles(maxFiles) }
+    const setBackupMaxFiles = (maxFiles) => { settings.value.backupMaxFiles = normalizeMaxFiles(maxFiles) }
     const resetToDefault = () => { settings.value = { ...defaultSettings } }
 
     return {
@@ -103,10 +109,8 @@ export function useSettingsStore() {
         setLayoutMode,
         defaultExportFolder,
         setDefaultExportFolder,
-        startupExportEnabled,
-        setStartupExportEnabled,
-        startupExportMaxFiles,
-        setStartupExportMaxFiles,
+        backupMaxFiles,
+        setBackupMaxFiles,
         resetToDefault
     }
 }

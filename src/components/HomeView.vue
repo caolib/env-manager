@@ -52,12 +52,28 @@
               <a-collapse-panel v-for="row in filteredSystemPathVars" :key="getPathVarPanelKey('system', row)">
                 <template #header>
                   <div class="path-var-panel-header">
-                    <span class="path-var-panel-name">{{ row.name }}</span>
-                    <a-tag>{{ getPathVarItemCount(row) }} 项</a-tag>
+                    <div class="path-var-panel-title">
+                      <span class="path-var-panel-name">{{ row.name }}</span>
+                      <a-tag>{{ getPathVarItemCount(row) }} 项</a-tag>
+                    </div>
+                    <div class="path-panel-actions" @click.stop>
+                      <a-button v-if="isPathTableDirty('system', row)" size="small" type="primary"
+                        @click="runPathTableAction('system', row, 'savePath')">保存</a-button>
+                      <a-button v-if="isPathTableDirty('system', row)" size="small"
+                        @click="runPathTableAction('system', row, 'resetPaths')">取消</a-button>
+                      <a-button size="small" @click="runPathTableAction('system', row, 'checkEditPaths')">路径检测</a-button>
+                      <a-button v-if="isPathTableDirty('system', row)" size="small" class="path-diff-ready"
+                        @click="runPathTableAction('system', row, 'showDiff')">diff</a-button>
+                      <a-button size="small" @click="runPathTableAction('system', row, 'addPath')">
+                        <PlusOutlined />
+                        添加路径
+                      </a-button>
+                    </div>
                   </div>
                 </template>
 
-                <PathVarTable :env-var="row" :disabled="row.disabled" :highlight="searchKeyword"
+                <PathVarTable :ref="el => setPathTableRef('system', row, el)" :env-var="row" :disabled="row.disabled"
+                  :highlight="searchKeyword" hide-header embedded
                   @delete="(row) => deleteVarDirect(row, 'system')"
                   @saveDirect="(row) => saveDirectVar(row, 'system')" />
               </a-collapse-panel>
@@ -83,14 +99,29 @@
               <a-collapse-panel v-for="row in filteredUserPathVars" :key="getPathVarPanelKey('user', row)">
                 <template #header>
                   <div class="path-var-panel-header">
-                    <span class="path-var-panel-name">{{ row.name }}</span>
-                    <a-tag>{{ getPathVarItemCount(row) }} 项</a-tag>
+                    <div class="path-var-panel-title">
+                      <span class="path-var-panel-name">{{ row.name }}</span>
+                      <a-tag>{{ getPathVarItemCount(row) }} 项</a-tag>
+                    </div>
+                    <div class="path-panel-actions" @click.stop>
+                      <a-button v-if="isPathTableDirty('user', row)" size="small" type="primary"
+                        @click="runPathTableAction('user', row, 'savePath')">保存</a-button>
+                      <a-button v-if="isPathTableDirty('user', row)" size="small"
+                        @click="runPathTableAction('user', row, 'resetPaths')">取消</a-button>
+                      <a-button size="small" @click="runPathTableAction('user', row, 'checkEditPaths')">路径检测</a-button>
+                      <a-button v-if="isPathTableDirty('user', row)" size="small" class="path-diff-ready"
+                        @click="runPathTableAction('user', row, 'showDiff')">diff</a-button>
+                      <a-button size="small" @click="runPathTableAction('user', row, 'addPath')">
+                        <PlusOutlined />
+                        添加路径
+                      </a-button>
+                    </div>
                   </div>
                 </template>
 
-                <PathVarTable :env-var="row" :disabled="row.disabled" :highlight="searchKeyword"
-                  @delete="(row) => deleteVarDirect(row, 'user')"
-                  @saveDirect="(row) => saveDirectVar(row, 'user')" />
+                <PathVarTable :ref="el => setPathTableRef('user', row, el)" :env-var="row" :disabled="row.disabled"
+                  :highlight="searchKeyword" hide-header embedded
+                  @delete="(row) => deleteVarDirect(row, 'user')" @saveDirect="(row) => saveDirectVar(row, 'user')" />
               </a-collapse-panel>
             </a-collapse>
           </div>
@@ -124,8 +155,8 @@
 
           <!-- 表格模式 -->
           <div v-else class="table-container">
-            <a-table :dataSource="filteredSystemVars" :columns="tableColumns" :pagination="false" size="small"
-              :rowKey="(record) => record.name" :scroll="{ x: 'max-content' }">
+            <a-table :dataSource="filteredSystemVars" :columns="tableColumns" :pagination="systemEnvTablePagination"
+              size="small" :rowKey="(record) => record.name" :scroll="{ x: 'max-content' }">
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'name'">
                   <span v-html="renderHighlight(record.name)" class="clickable" @click="copyText(record.name)"
@@ -192,8 +223,8 @@
 
           <!-- 表格模式 -->
           <div v-else class="table-container">
-            <a-table :dataSource="filteredUserVars" :columns="tableColumns" :pagination="false" size="small"
-              :rowKey="(record) => record.name" :scroll="{ x: 'max-content' }">
+            <a-table :dataSource="filteredUserVars" :columns="tableColumns" :pagination="userEnvTablePagination"
+              size="small" :rowKey="(record) => record.name" :scroll="{ x: 'max-content' }">
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'name'">
                   <span v-html="renderHighlight(record.name)" class="clickable" @click="copyText(record.name)"
@@ -360,6 +391,19 @@ const props = defineProps({
 
 const settingsStore = useSettingsStore();
 const alternativesStore = useAlternativesStore();
+const envTablePageSizeOptions = [10, 20, 50, 100];
+const systemEnvTablePagination = {
+  pageSize: 20,
+  showSizeChanger: true,
+  pageSizeOptions: envTablePageSizeOptions,
+  pageSizeStorageKey: 'home-system-vars'
+};
+const userEnvTablePagination = {
+  pageSize: 20,
+  showSizeChanger: true,
+  pageSizeOptions: envTablePageSizeOptions,
+  pageSizeStorageKey: 'home-user-vars'
+};
 
 // 禁用变量存储
 const DISABLED_VARS_KEY = 'env-manager-disabled-vars-v1';
@@ -462,6 +506,7 @@ const isAdmin = ref(false);
 const activeKeys = ref([]); // 默认折叠所有主页面板
 const systemPathVarActiveKeys = ref([]);
 const userPathVarActiveKeys = ref([]);
+const pathTableRefs = ref({});
 const pathChecking = ref(false);
 
 // 对话框相关
@@ -687,6 +732,31 @@ function getDefaultPathVarActiveKeys(vars, scope) {
 
 function getPathVarItemCount(row) {
   return (row.value || '').split(';').filter(Boolean).length;
+}
+
+function getPathTableRefKey(scope, row) {
+  return getPathVarPanelKey(scope, row);
+}
+
+function setPathTableRef(scope, row, el) {
+  const key = getPathTableRefKey(scope, row);
+  if (el) {
+    pathTableRefs.value[key] = el;
+  } else {
+    delete pathTableRefs.value[key];
+  }
+}
+
+function getPathTableRef(scope, row) {
+  return pathTableRefs.value[getPathTableRefKey(scope, row)];
+}
+
+function isPathTableDirty(scope, row) {
+  return !!getPathTableRef(scope, row)?.isDirty;
+}
+
+function runPathTableAction(scope, row, action) {
+  getPathTableRef(scope, row)?.[action]?.();
 }
 
 watch(filteredSystemPathVars, (vars) => {
@@ -1191,7 +1261,7 @@ async function handleSubmit() {
 async function saveDirectVar(row, scope) {
   try {
     const isSystem = scope === 'system';
-    
+
     // 如果原来是禁用的，仅更新 disabled 存储
     const disabledInfo = getDisabledVar(scope, row.name);
     if (disabledInfo) {
@@ -1584,13 +1654,18 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   width: 100%;
+  min-width: 0;
 }
 
 .panel-title {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 8px;
+  min-width: 0;
   font-size: 16px;
   font-weight: 600;
 }
@@ -1607,15 +1682,62 @@ onMounted(() => {
   gap: 12px;
 }
 
+.path-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 520px;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+.path-diff-ready {
+  border-color: rgba(250, 173, 20, 0.75);
+  background: rgba(250, 173, 20, 0.16);
+  color: var(--ui-warning);
+  font-weight: 700;
+}
+
 .path-var-collapse {
   width: 100%;
 }
 
+.path-var-collapse :deep(.ui-collapse-panel) {
+  border-color: var(--ui-border-strong);
+  background: var(--ui-surface-muted);
+}
+
+.path-var-collapse :deep(.ui-collapse-header) {
+  background: var(--ui-surface-muted);
+}
+
+.path-var-collapse :deep(.ui-collapse-content) {
+  padding: 10px;
+  background: var(--ui-surface);
+}
+
+.path-table-stack :deep(.path-var-table) {
+  background: var(--ui-surface);
+}
+
 .path-var-panel-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 8px;
   width: 100%;
+  min-width: 0;
+}
+
+.path-var-panel-title {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-width: 0;
 }
 
 .path-var-panel-name {

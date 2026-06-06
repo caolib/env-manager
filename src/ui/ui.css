@@ -264,7 +264,43 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
   padding-top: 8px;
+  color: var(--ui-text-muted);
+  font-size: 12px;
+}
+
+.ui-pagination-total {
+  margin-right: auto;
+}
+
+.ui-page-size,
+.ui-page-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ui-page-size-select {
+  height: 24px;
+  min-width: 76px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font-size: 12px;
+  outline: none;
+}
+
+.ui-page-size-select:focus {
+  border-color: var(--ui-primary);
+  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.12);
+}
+
+.ui-page-current {
+  min-width: 40px;
+  text-align: center;
 }
 
 .ui-collapse {
@@ -285,15 +321,18 @@
   align-items: center;
   gap: 8px;
   width: 100%;
+  box-sizing: border-box;
   padding: 14px 16px;
   border: 0;
   border-radius: 0;
   background: var(--ui-surface);
   color: var(--ui-text);
   text-align: left;
+  cursor: pointer;
 }
 
 .ui-collapse-title {
+  display: block;
   flex: 1;
   min-width: 0;
 }
@@ -674,25 +713,38 @@
 
 .ui-message {
   max-width: min(90vw, 680px);
-  padding: 9px 12px;
+  padding: 10px 14px;
   border: 1px solid var(--ui-border);
   border-radius: 8px;
   background: var(--ui-surface);
   color: var(--ui-text);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  font-weight: 600;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.26);
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
 .ui-message-success {
-  border-color: rgba(26, 127, 55, 0.35);
+  border-color: rgba(26, 127, 55, 0.7);
+  background: var(--ui-success-bg);
+  color: var(--ui-success);
 }
 
 .ui-message-error {
-  border-color: rgba(209, 36, 47, 0.35);
+  border-color: rgba(209, 36, 47, 0.7);
+  background: var(--ui-danger-bg);
+  color: var(--ui-danger);
 }
 
 .ui-message-warning {
-  border-color: rgba(154, 103, 0, 0.35);
+  border-color: rgba(154, 103, 0, 0.7);
+  background: var(--ui-warning-bg);
+  color: var(--ui-warning);
+}
+
+.ui-message-info {
+  border-color: rgba(9, 105, 218, 0.6);
+  background: var(--ui-info-bg);
+  color: var(--ui-primary);
 }
 
 .ui-message-leave {

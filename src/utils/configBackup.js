@@ -34,8 +34,7 @@ export function buildCurrentConfig(beijingTime) {
             sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
             sensitiveKeywords: settingsStore.sensitiveKeywords.value,
             defaultExportFolder: settingsStore.defaultExportFolder.value,
-            startupExportEnabled: settingsStore.startupExportEnabled.value,
-            startupExportMaxFiles: settingsStore.startupExportMaxFiles.value
+            backupMaxFiles: settingsStore.backupMaxFiles.value
         },
         var_alternatives: cloneData(getData(ALT_VALUES_KEY, { system: {}, user: {} }), { system: {}, user: {} }),
         disabled_vars: cloneData(getData(DISABLED_VARS_KEY, { system: {}, user: {} }), { system: {}, user: {} }),
@@ -63,7 +62,7 @@ export function exportBackupFile(filePrefix, options = {}) {
         configData,
         fileName,
         exportFolder,
-        settingsStore.startupExportMaxFiles.value
+        settingsStore.backupMaxFiles.value
     );
     if (result.success && reveal) {
         window.services.revealInExplorer(result.path);

@@ -17,7 +17,7 @@ const props = defineProps({
     },
     hideUnchangedDefault: {
         type: Boolean,
-        default: false
+        default: true
     },
     sortKeys: {
         type: Boolean,

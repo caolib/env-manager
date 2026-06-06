@@ -1,20 +1,18 @@
 <script setup>
 import { onMounted, ref, watch, computed, provide } from 'vue';
-import { message } from './ui';
+import { Modal } from './ui';
 import HomeView from './components/HomeView.vue';
 import ConfigView from './components/ConfigView.vue';
 import GroupView from './components/GroupView.vue';
 import { useSettingsStore } from './stores/settings';
-import { useGroupsStore } from './stores/groups';
-import { getData } from './utils/store';
 
 const currentView = ref('home');
 const enterAction = ref({});
+const configAction = ref(null);
 const settingsStore = useSettingsStore();
-const groupsStore = useGroupsStore();
-
-const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
-const DISABLED_VARS_KEY = 'env-manager-disabled-vars-v1';
+let backupPromptOpen = false;
+let backupCheckTimer = null;
+let configActionId = 0;
 
 // 主题相关
 const systemDarkMode = ref(window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -58,71 +56,79 @@ const navItems = [
 
 // Note: 功能命令需要在具体插件模板中自行注册，模板保留主题与配置逻辑
 
-function getBeijingTimestamp() {
-  const now = new Date();
-  const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
-  return {
-    date: beijingTime,
-    filePart: beijingTime.toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  };
-}
+function openBackupSetupPrompt(title, content, action = null) {
+  if (backupPromptOpen || currentView.value === 'config') return;
 
-function buildStartupExportConfig(beijingTime) {
-  const envResult = window.services.getEnvVars();
-
-  return {
-    version: '1.2.0',
-    exportTime: beijingTime.toISOString(),
-    settings: {
-      theme: settingsStore.theme.value,
-      sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
-      sensitiveKeywords: settingsStore.sensitiveKeywords.value,
-      defaultExportFolder: settingsStore.defaultExportFolder.value,
-      startupExportEnabled: settingsStore.startupExportEnabled.value,
-      startupExportMaxFiles: settingsStore.startupExportMaxFiles.value
+  backupPromptOpen = true;
+  Modal.confirm({
+    title,
+    content,
+    okText: '去配置',
+    cancelText: '稍后',
+    onOk() {
+      currentView.value = 'config';
+      if (action) {
+        configActionId += 1;
+        configAction.value = { ...action, id: configActionId };
+      }
+      backupPromptOpen = false;
     },
-    var_alternatives: getData(ALT_VALUES_KEY, { system: {}, user: {} }),
-    disabled_vars: getData(DISABLED_VARS_KEY, { system: {}, user: {} }),
-    groups: JSON.parse(JSON.stringify(groupsStore.groups.value)),
-    env_vars: {
-      system_vars: envResult.systemVars || [],
-      user_vars: envResult.userVars || []
+    onCancel() {
+      backupPromptOpen = false;
     }
-  };
+  });
 }
 
-function exportConfigOnStartup() {
-  if (!settingsStore.startupExportEnabled.value) return;
-
-  const exportFolder = settingsStore.defaultExportFolder.value?.trim();
-  if (!exportFolder) {
-    message.warning('启动自动导出已开启，请先设置默认导出文件夹');
-    return;
+function checkBackupSetupOnStartup() {
+  if (backupCheckTimer) {
+    window.clearTimeout(backupCheckTimer);
   }
 
-  try {
-    const { date, filePart } = getBeijingTimestamp();
-    const fileName = `env-manager-startup-${filePart}.json`;
-    const configData = buildStartupExportConfig(date);
-    const result = window.services.exportStartupConfig(
-      configData,
-      fileName,
-      exportFolder,
-      settingsStore.startupExportMaxFiles.value
-    );
+  backupCheckTimer = window.setTimeout(() => {
+    const exportFolder = settingsStore.defaultExportFolder.value?.trim();
 
-    if (!result.success) {
-      message.error(`启动自动导出失败: ${result.message}`);
+    if (!exportFolder) {
+      openBackupSetupPrompt(
+        '设置默认导出文件夹',
+        '还没有设置默认导出文件夹。建议先设置一个固定目录，后续备份和导入都会在这里管理。',
+        { type: 'selectExportFolder' }
+      );
+      return;
     }
-  } catch (error) {
-    message.error(`启动自动导出失败: ${error.message}`);
-  }
+
+    if (!window.services?.listExportConfigFiles) return;
+
+    try {
+      const result = window.services.listExportConfigFiles(exportFolder);
+      if (!result.success) {
+        openBackupSetupPrompt(
+          '检查备份目录',
+          `当前默认导出文件夹不可用：${result.message}。请重新设置默认导出文件夹。`,
+          { type: 'selectExportFolder' }
+        );
+        return;
+      }
+
+      if ((result.files || []).length === 0) {
+        openBackupSetupPrompt(
+          '还没有配置备份',
+          '已设置默认导出文件夹，但目录中还没有备份文件。建议进入配置页导出一次备份。'
+        );
+      }
+    } catch (error) {
+      openBackupSetupPrompt(
+        '检查备份设置',
+        `读取备份目录失败：${error.message}。请检查默认导出文件夹设置。`,
+        { type: 'selectExportFolder' }
+      );
+    }
+  }, 300);
 }
 
 onMounted(() => {
   // 应用初始主题
   applyTheme();
-  exportConfigOnStartup();
+  checkBackupSetupOnStartup();
 
   // 监听系统主题变化
   const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -134,6 +140,7 @@ onMounted(() => {
   window.utools.onPluginEnter((action) => {
     // 模板: 将进入动作传递给主页，供自定义逻辑使用
     enterAction.value = action;
+    checkBackupSetupOnStartup();
   });
 
   window.utools.onPluginOut(() => {
@@ -166,7 +173,8 @@ const handleMenuClick = (key) => {
     <main class="app-content">
       <HomeView v-if="currentView === 'home'" :enterAction="enterAction" />
       <GroupView v-else-if="currentView === 'group'" />
-      <ConfigView v-else-if="currentView === 'config'" />
+      <ConfigView v-else-if="currentView === 'config'" :action="configAction"
+        @action-handled="configAction = null" />
     </main>
   </div>
 </template>

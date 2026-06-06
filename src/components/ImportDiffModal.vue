@@ -1,6 +1,8 @@
 <script setup>
 import { computed } from 'vue';
+import { removePathVariablesFromConfig } from '../utils/configDiff';
 import JsonDiffView from './JsonDiffView.vue';
+import PathVariableDiffView from './PathVariableDiffView.vue';
 
 const props = defineProps({
     open: Boolean,
@@ -19,6 +21,9 @@ const emit = defineEmits(['update:open', 'confirm']);
 const importTitle = computed(() => {
     return props.importConfig?.exportTime ? `导入 JSON：${props.importConfig.exportTime}` : '导入 JSON';
 });
+
+const currentConfigWithoutPathVars = computed(() => removePathVariablesFromConfig(props.currentConfig));
+const importConfigWithoutPathVars = computed(() => removePathVariablesFromConfig(props.importConfig));
 
 const handleOverwrite = () => {
     emit('confirm', 'overwrite');
@@ -43,17 +48,31 @@ const handleCancel = () => {
             <a-button type="primary" @click="handleOverwrite">覆盖导入</a-button>
         </template>
 
-        <a-alert message="请仔细核对完整 JSON 差异" description="覆盖导入按原逻辑写入；增量导入只添加当前不存在的配置，Path 变量会合并路径项并去重。"
-            type="info" show-icon class="import-diff-alert" />
+        <div class="import-diff-content">
+            <a-alert message="请仔细核对配置差异" description="上方单独展示 Path 变量逐项差异；下方 JSON 差异不再重复显示 Path 变量。"
+                type="info" show-icon class="import-diff-alert" />
 
-        <JsonDiffView :left="currentConfig" :right="importConfig" left-title="当前 JSON" :right-title="importTitle"
-            empty-text="两个 JSON 没有差异" />
+            <PathVariableDiffView :left-config="currentConfig" :right-config="importConfig" left-title="当前 JSON"
+                :right-title="importTitle" />
+
+            <JsonDiffView :left="currentConfigWithoutPathVars" :right="importConfigWithoutPathVars" left-title="当前 JSON"
+                :right-title="importTitle" empty-text="除 Path 变量外没有差异" />
+        </div>
     </a-modal>
 </template>
 
 <style scoped>
+.import-diff-content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+    overflow: auto;
+}
+
 .import-diff-alert {
-    margin-bottom: 16px;
+    flex-shrink: 0;
 }
 
 :deep(.json-diff-body) {

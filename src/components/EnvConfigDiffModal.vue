@@ -1,7 +1,9 @@
 <script setup>
 import { computed } from 'vue';
 import { ArrowLeftOutlined } from '@ant-design/icons-vue';
+import { removePathVariablesFromConfig } from '../utils/configDiff';
 import JsonDiffView from './JsonDiffView.vue';
+import PathVariableDiffView from './PathVariableDiffView.vue';
 
 const props = defineProps({
     open: Boolean,
@@ -29,6 +31,9 @@ const compareTitle = computed(() => {
     return props.compareFile?.name ? `文件 JSON：${props.compareFile.name}` : '文件 JSON';
 });
 
+const currentConfigWithoutPathVars = computed(() => removePathVariablesFromConfig(props.currentConfig));
+const compareConfigWithoutPathVars = computed(() => removePathVariablesFromConfig(props.compareConfig));
+
 function closeModal() {
     emit('update:open', false);
 }
@@ -45,8 +50,11 @@ function closeModal() {
         </div>
 
         <div class="diff-page-content">
-            <JsonDiffView :left="currentConfig" :right="compareConfig" left-title="当前 JSON"
-                :right-title="compareTitle" empty-text="两个 JSON 没有差异" />
+            <PathVariableDiffView :left-config="currentConfig" :right-config="compareConfig" left-title="当前 JSON"
+                :right-title="compareTitle" />
+
+            <JsonDiffView :left="currentConfigWithoutPathVars" :right="compareConfigWithoutPathVars" left-title="当前 JSON"
+                :right-title="compareTitle" empty-text="除 Path 变量外没有差异" />
         </div>
     </section>
 </template>
@@ -78,6 +86,7 @@ function closeModal() {
 .diff-page-content {
     display: flex;
     flex-direction: column;
+    gap: 16px;
     min-width: 0;
     padding-top: 12px;
 }

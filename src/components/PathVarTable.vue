@@ -1,6 +1,9 @@
 <template>
-  <div class="path-var-table" :class="{ 'disabled-var': props.disabled || props.envVar.disabled }">
-    <div class="path-var-toolbar">
+  <div class="path-var-table" :class="{
+    'disabled-var': props.disabled || props.envVar.disabled,
+    'path-var-table-embedded': props.embedded
+  }">
+    <div v-if="!props.hideHeader" class="path-var-toolbar">
       <div class="path-var-title">
         <span class="path-var-name" @click="copyName" title="点击复制变量名">
           <template v-for="(part, index) in getHighlightParts(props.envVar.name, props.highlight)"
@@ -14,17 +17,13 @@
       </div>
 
       <a-space wrap :size="6">
-        <a-button size="small" type="primary" @click="savePath" :disabled="!isDirty">保存</a-button>
-        <a-button size="small" @click="resetPaths" :disabled="!isDirty">取消</a-button>
+        <a-button v-if="isDirty" size="small" type="primary" @click="savePath">保存</a-button>
+        <a-button v-if="isDirty" size="small" @click="resetPaths">取消</a-button>
         <a-button size="small" @click="checkEditPaths">路径检测</a-button>
-        <a-button size="small" @click="showDiff" :disabled="!isDirty">diff</a-button>
+        <a-button v-if="isDirty" size="small" class="path-diff-ready" @click="showDiff">diff</a-button>
         <a-button size="small" @click="addPath">
           <PlusOutlined />
           添加路径
-        </a-button>
-        <a-button size="small" danger @click="openDeleteConfirm">
-          <DeleteOutlined />
-          删除变量
         </a-button>
       </a-space>
     </div>
@@ -36,15 +35,17 @@
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'path'">
           <div class="path-input-highlight-wrap">
-            <a-input v-model:value="editList[record.index]" size="small" placeholder="输入路径..."
-              @focus="focusedIndex = record.index" @blur="focusedIndex = null" />
-            <div v-if="shouldShowPathHighlight(record)" class="path-highlight-overlay">
+            <button v-if="shouldShowPathHighlight(record)" type="button" class="path-highlight-field"
+              @click="focusPathInput(record.index)">
               <template v-for="(part, index) in getHighlightParts(editList[record.index], props.highlight)"
                 :key="`path-${record.index}-${index}`">
                 <mark v-if="part.match" class="search-highlight">{{ part.text }}</mark>
                 <template v-else>{{ part.text }}</template>
               </template>
-            </div>
+            </button>
+            <a-input v-show="!shouldShowPathHighlight(record)" :ref="el => setPathInputRef(record.index, el)"
+              v-model:value="editList[record.index]" size="small" placeholder="输入路径..."
+              @focus="focusedIndex = record.index" @blur="focusedIndex = null" />
           </div>
         </template>
 
@@ -64,20 +65,11 @@
         </template>
       </template>
     </a-table>
-
-    <a-modal v-model:open="deleteConfirmOpen" title="删除 Path 变量" ok-text="确认删除" cancel-text="取消"
-      :ok-button-props="{ danger: true, disabled: deleteConfirmText !== DELETE_CONFIRM_TEXT }"
-      @ok="confirmDeletePathVar" @cancel="cancelDeleteConfirm">
-      <p class="delete-confirm-text">
-        此操作会删除整个 Path 变量。请输入 <strong>{{ DELETE_CONFIRM_TEXT }}</strong> 确认删除。
-      </p>
-      <a-input v-model:value="deleteConfirmText" placeholder="delete path" />
-    </a-modal>
   </div>
 </template>
 
 <script setup>
-import { computed, defineComponent, h, ref, watch } from 'vue';
+import { computed, defineComponent, h, nextTick, ref, watch } from 'vue';
 import { Checkbox, message, Modal } from '../ui';
 import { DeleteOutlined, FolderOpenOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import PathDiffModal from './PathDiffModal.vue';
@@ -94,16 +86,22 @@ const props = defineProps({
   highlight: {
     type: String,
     default: ''
+  },
+  hideHeader: {
+    type: Boolean,
+    default: false
+  },
+  embedded: {
+    type: Boolean,
+    default: false
   }
 });
 
 const emit = defineEmits(['delete', 'saveDirect']);
 
-const DELETE_CONFIRM_TEXT = 'delete path';
 const editList = ref([]);
-const deleteConfirmOpen = ref(false);
-const deleteConfirmText = ref('');
 const focusedIndex = ref(null);
+const pathInputRefs = ref({});
 
 const pathList = computed(() => {
   const value = props.envVar.value || '';
@@ -169,6 +167,21 @@ function shouldShowPathHighlight(record) {
     && value.toLowerCase().includes(props.highlight.toLowerCase());
 }
 
+function setPathInputRef(index, el) {
+  if (el) {
+    pathInputRefs.value[index] = el;
+  } else {
+    delete pathInputRefs.value[index];
+  }
+}
+
+async function focusPathInput(index) {
+  focusedIndex.value = index;
+  await nextTick();
+  const input = pathInputRefs.value[index]?.$el?.querySelector?.('input');
+  input?.focus();
+}
+
 watch(() => props.envVar.value, () => {
   editList.value = [...pathList.value];
 }, { immediate: true });
@@ -179,22 +192,6 @@ function copyName() {
   }).catch(() => {
     message.error('复制失败');
   });
-}
-
-function openDeleteConfirm() {
-  deleteConfirmText.value = '';
-  deleteConfirmOpen.value = true;
-}
-
-function cancelDeleteConfirm() {
-  deleteConfirmText.value = '';
-}
-
-function confirmDeletePathVar() {
-  if (deleteConfirmText.value !== DELETE_CONFIRM_TEXT) return;
-  emit('delete', props.envVar);
-  deleteConfirmOpen.value = false;
-  deleteConfirmText.value = '';
 }
 
 function addPath() {
@@ -371,6 +368,15 @@ function checkEditPaths() {
     message.success('检测完成，未发现重复或不存在的路径');
   }
 }
+
+defineExpose({
+  isDirty,
+  savePath,
+  resetPaths,
+  checkEditPaths,
+  showDiff,
+  addPath
+});
 </script>
 
 <style scoped>
@@ -379,6 +385,12 @@ function checkEditPaths() {
   border: 1px solid var(--ant-color-border);
   border-radius: 6px;
   padding: 10px;
+}
+
+.path-var-table-embedded {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 
 .disabled-var {
@@ -410,29 +422,51 @@ function checkEditPaths() {
   margin-bottom: 8px;
 }
 
-.delete-confirm-text {
-  margin-bottom: 8px;
+.path-diff-ready {
+  border-color: rgba(250, 173, 20, 0.75);
+  background: rgba(250, 173, 20, 0.16);
+  color: var(--ui-warning);
+  font-weight: 700;
 }
 
 .path-input-highlight-wrap {
   position: relative;
 }
 
-.path-highlight-overlay {
-  position: absolute;
-  inset: 1px 28px 1px 8px;
-  display: flex;
-  align-items: center;
+.path-highlight-field {
+  display: block;
+  width: 100%;
+  height: 24px;
+  padding: 0 8px;
   overflow: hidden;
-  color: transparent;
-  font-size: 14px;
-  line-height: 30px;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font-size: 12px;
+  line-height: 22px;
+  text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  pointer-events: none;
 }
 
-.path-highlight-overlay :deep(.search-highlight),
+.path-highlight-field:hover {
+  border-color: var(--ui-primary);
+}
+
+.path-highlight-field:focus {
+  outline: none;
+  border-color: var(--ui-primary);
+  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.12);
+}
+
 .path-var-name :deep(.search-highlight) {
+  background-color: yellow !important;
+  color: red !important;
+  padding: 0;
+}
+
+.path-highlight-field :deep(.search-highlight) {
   background-color: yellow !important;
   color: red !important;
   padding: 0;

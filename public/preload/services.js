@@ -222,32 +222,6 @@ function writeJsonFile(filePath, data) {
   fs.writeFileSync(filePath, jsonStr, { encoding: 'utf-8' })
 }
 
-function listRollingExportFiles(exportFolder, filePrefix) {
-  return fs.readdirSync(exportFolder)
-    .filter(function (fileName) {
-      return fileName.startsWith(filePrefix) && fileName.toLowerCase().endsWith('.json')
-    })
-    .map(function (fileName) {
-      const filePath = path.join(exportFolder, fileName)
-      try {
-        const stat = fs.statSync(filePath)
-        if (!stat.isFile()) return null
-        return {
-          name: fileName,
-          path: filePath,
-          mtimeMs: stat.mtimeMs
-        }
-      } catch {
-        return null
-      }
-    })
-    .filter(Boolean)
-    .sort(function (a, b) {
-      if (a.mtimeMs !== b.mtimeMs) return a.mtimeMs - b.mtimeMs
-      return a.name.localeCompare(b.name)
-    })
-}
-
 function listConfigBackupFiles(exportFolder) {
   return fs.readdirSync(exportFolder)
     .filter(function (fileName) {
@@ -301,7 +275,7 @@ function sortObjectKeys(value) {
   return value
 }
 
-function normalizeStartupConfigForCompare(config) {
+function normalizeConfigForCompare(config) {
   const clone = JSON.parse(JSON.stringify(config || {}))
   if (clone && typeof clone === 'object' && !Array.isArray(clone)) {
     delete clone.exportTime
@@ -309,12 +283,8 @@ function normalizeStartupConfigForCompare(config) {
   return sortObjectKeys(clone)
 }
 
-function isSameStartupConfig(left, right) {
-  return JSON.stringify(normalizeStartupConfigForCompare(left)) === JSON.stringify(normalizeStartupConfigForCompare(right))
-}
-
 function getConfigCompareKey(config) {
-  return JSON.stringify(normalizeStartupConfigForCompare(config))
+  return JSON.stringify(normalizeConfigForCompare(config))
 }
 
 function getConfigExportTimeMs(config) {
@@ -326,24 +296,6 @@ function compareBackupFilesNewestFirst(a, b) {
   if (a.exportTimeMs !== b.exportTimeMs) return b.exportTimeMs - a.exportTimeMs
   if (a.mtimeMs !== b.mtimeMs) return b.mtimeMs - a.mtimeMs
   return b.name.localeCompare(a.name)
-}
-
-function readLatestStartupConfig(exportFolder, filePrefix) {
-  const files = listRollingExportFiles(exportFolder, filePrefix)
-
-  for (let index = files.length - 1; index >= 0; index--) {
-    try {
-      const content = fs.readFileSync(files[index].path, { encoding: 'utf-8' })
-      return {
-        file: files[index],
-        data: JSON.parse(content)
-      }
-    } catch {
-      // 忽略损坏或不可读的历史备份，继续找更早的文件
-    }
-  }
-
-  return null
 }
 
 function isConfigBackupData(data) {
@@ -666,32 +618,6 @@ window.services = {
         return { success: true, path: savePath }
       }
       return { success: false, message: '用户取消保存' }
-    } catch (error) {
-      return { success: false, message: error.message }
-    }
-  },
-
-  /**
-   * 启动时滚动导出配置文件
-   */
-  exportStartupConfig: function (configData, fileName, exportFolder, maxFiles) {
-    const filePrefix = 'env-manager-startup-'
-    if (!fileName) fileName = filePrefix + Date.now() + '.json'
-
-    try {
-      const folderCheck = validateExportFolder(exportFolder)
-      if (!folderCheck.valid) return { success: false, message: folderCheck.message }
-
-      const latest = readLatestStartupConfig(exportFolder, filePrefix)
-      if (latest && isSameStartupConfig(latest.data, configData)) {
-        const removedFiles = cleanupConfigBackupFiles(exportFolder, maxFiles)
-        return { success: true, skipped: true, reason: '配置未变化', path: latest.file.path, removedFiles: removedFiles }
-      }
-
-      const filePath = path.join(exportFolder, fileName)
-      writeJsonFile(filePath, configData)
-      const removedFiles = cleanupConfigBackupFiles(exportFolder, maxFiles)
-      return { success: true, path: filePath, removedFiles: removedFiles }
     } catch (error) {
       return { success: false, message: error.message }
     }

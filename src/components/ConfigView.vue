@@ -1,7 +1,7 @@
 <script setup>
 
 import { computed, ref, onMounted, watch } from 'vue'
-import { message } from '../ui'
+import { message, Modal } from '../ui'
 import {
     DeleteOutlined,
     ExportOutlined,
@@ -18,6 +18,15 @@ import { useAlternativesStore } from '../stores/alternatives'
 import { getData, setData } from '../utils/store'
 import ImportDiffModal from './ImportDiffModal.vue';
 import EnvConfigDiffModal from './EnvConfigDiffModal.vue';
+
+const props = defineProps({
+    action: {
+        type: Object,
+        default: null
+    }
+});
+
+const emit = defineEmits(['action-handled']);
 
 const settingsStore = useSettingsStore();
 const groupsStore = useGroupsStore();
@@ -61,16 +70,6 @@ const sensitiveKeywords = computed({
 const defaultExportFolder = computed({
     get: () => settingsStore.defaultExportFolder.value,
     set: (val) => { settingsStore.defaultExportFolder.value = val }
-});
-
-const startupExportEnabled = computed({
-    get: () => settingsStore.startupExportEnabled.value,
-    set: (val) => { settingsStore.startupExportEnabled.value = val }
-});
-
-const startupExportMaxFiles = computed({
-    get: () => settingsStore.startupExportMaxFiles.value,
-    set: (val) => { settingsStore.startupExportMaxFiles.value = val }
 });
 
 // 临时输入框
@@ -122,8 +121,7 @@ const getCurrentConfig = () => {
             sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
             sensitiveKeywords: settingsStore.sensitiveKeywords.value,
             defaultExportFolder: settingsStore.defaultExportFolder.value,
-            startupExportEnabled: settingsStore.startupExportEnabled.value,
-            startupExportMaxFiles: settingsStore.startupExportMaxFiles.value
+            backupMaxFiles: settingsStore.backupMaxFiles.value
         },
         var_alternatives: getData(ALT_VALUES_KEY, { system: {}, user: {} }),
         disabled_vars: getData(DISABLED_VARS_KEY, { system: {}, user: {} }),
@@ -136,8 +134,10 @@ const getCurrentConfig = () => {
 };
 
 // 导出配置（包含环境变量和应用配置）
-const exportConfig = () => {
+const exportConfig = async () => {
     try {
+        await loadEnvVars();
+
         // 使用东八区时间
         const now = new Date();
         const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
@@ -154,7 +154,7 @@ const exportConfig = () => {
             configData,
             fileName,
             exportFolder,
-            settingsStore.startupExportMaxFiles.value
+            settingsStore.backupMaxFiles.value
         );
         if (result.success) {
             message.success(`配置已导出到: ${result.path}`);
@@ -190,8 +190,8 @@ const processImport = async (config) => {
             if (s.sensitiveFieldsEnabled !== undefined) settingsStore.setSensitiveFieldsEnabled(!!s.sensitiveFieldsEnabled);
             if (s.sensitiveKeywords !== undefined && Array.isArray(s.sensitiveKeywords)) settingsStore.setSensitiveKeywords(s.sensitiveKeywords);
             if (s.defaultExportFolder !== undefined) settingsStore.setDefaultExportFolder(s.defaultExportFolder);
-            if (s.startupExportEnabled !== undefined) settingsStore.setStartupExportEnabled(!!s.startupExportEnabled);
-            if (s.startupExportMaxFiles !== undefined) settingsStore.setStartupExportMaxFiles(s.startupExportMaxFiles);
+            if (s.backupMaxFiles !== undefined) settingsStore.setBackupMaxFiles(s.backupMaxFiles);
+            if (s.startupExportMaxFiles !== undefined) settingsStore.setBackupMaxFiles(s.startupExportMaxFiles);
         }
 
         // 导入普通变量备用值
@@ -461,14 +461,9 @@ function importSettingIfEmpty(key, incomingValue) {
             settingsStore.setDefaultExportFolder(incomingValue);
             return true;
         },
-        startupExportEnabled: () => {
-            if (settingsStore.startupExportEnabled.value !== undefined) return false;
-            settingsStore.setStartupExportEnabled(!!incomingValue);
-            return true;
-        },
-        startupExportMaxFiles: () => {
-            if (!isEmptyConfigValue(settingsStore.startupExportMaxFiles.value)) return false;
-            settingsStore.setStartupExportMaxFiles(incomingValue);
+        backupMaxFiles: () => {
+            if (!isEmptyConfigValue(settingsStore.backupMaxFiles.value)) return false;
+            settingsStore.setBackupMaxFiles(incomingValue);
             return true;
         }
     };
@@ -696,6 +691,16 @@ const removeSensitiveKeyword = (index) => {
     message.success(`已删除关键词: ${keyword}`);
 };
 
+function promptExportBackupAfterFolderSelected() {
+    Modal.confirm({
+        title: '导出一次备份配置',
+        content: '默认导出文件夹已设置。是否现在导出一次备份配置？',
+        okText: '立即导出',
+        cancelText: '稍后',
+        onOk: () => exportConfig()
+    });
+}
+
 const selectDefaultExportFolder = () => {
     try {
         const result = window.services.selectExportFolder(defaultExportFolder.value?.trim());
@@ -703,6 +708,7 @@ const selectDefaultExportFolder = () => {
             defaultExportFolder.value = result.path;
             loadBackupFiles();
             message.success('默认导出文件夹已设置');
+            promptExportBackupAfterFolderSelected();
         } else if (result.message !== '用户取消选择') {
             message.error(`选择文件夹失败: ${result.message}`);
         }
@@ -710,6 +716,15 @@ const selectDefaultExportFolder = () => {
         message.error(`选择文件夹失败: ${error.message}`);
     }
 };
+
+watch(() => props.action?.id, () => {
+    if (props.action?.type !== 'selectExportFolder') return;
+
+    window.setTimeout(() => {
+        selectDefaultExportFolder();
+        emit('action-handled');
+    }, 0);
+}, { immediate: true });
 
 const openDefaultExportFolder = () => {
     const folder = defaultExportFolder.value?.trim();
@@ -1016,28 +1031,6 @@ onMounted(() => {
 
         <section class="config-category">
             <div class="category-heading">
-                <h3>自动备份</h3>
-            </div>
-            <div class="category-content">
-                <div class="setting-row">
-                    <a-typography-text class="setting-label">启动时导出</a-typography-text>
-                    <div class="setting-control">
-                        <a-switch v-model:checked="startupExportEnabled" />
-                    </div>
-                </div>
-
-                <div v-if="startupExportEnabled" class="setting-row">
-                    <a-typography-text class="setting-label">最大保留文件数</a-typography-text>
-                    <div class="setting-control">
-                        <a-input-number v-model:value="startupExportMaxFiles" :min="1" :max="999" :precision="0" />
-                        <span class="setting-note">默认导出目录内仅保留最新的配置备份</span>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="config-category">
-            <div class="category-heading">
                 <h3>备份文件</h3>
             </div>
             <div class="category-content">
@@ -1077,8 +1070,13 @@ onMounted(() => {
                         </div>
 
                         <a-table :dataSource="backupFiles" :columns="backupFileColumns" :loading="backupFilesLoading"
-                            :pagination="{ pageSize: 10, size: 'small' }" :rowKey="record => record.path" size="small"
-                            :customRow="getBackupFileRowProps" class="backup-file-table"
+                            :pagination="{
+                                pageSize: 10,
+                                size: 'small',
+                                showSizeChanger: true,
+                                pageSizeOptions: [10, 20, 50, 100],
+                                pageSizeStorageKey: 'config-backup-files'
+                            }" :rowKey="record => record.path" size="small" :customRow="getBackupFileRowProps" class="backup-file-table"
                             :locale="{ emptyText: '当前目录没有配置文件' }">
                             <template #bodyCell="{ column, record }">
                                 <template v-if="column.key === 'id'">

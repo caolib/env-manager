@@ -10,8 +10,13 @@ import {
   inject,
   isVNode,
   provide,
-  ref
+  ref,
+  watch
 } from 'vue';
+import { getData, setData } from '../utils/store';
+
+const TABLE_PAGE_SIZE_STORAGE_PREFIX = 'env-manager-table-page-size:';
+const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 function slotContent(slots, name = 'default', props = {}) {
   return slots[name] ? slots[name](props) : [];
@@ -29,6 +34,25 @@ function getRowKey(rowKey, record, index) {
 
 function normalizeSize(size) {
   return typeof size === 'number' ? `${size}px` : size;
+}
+
+function normalizePageSize(value, fallback = 10) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) return fallback;
+  return Math.max(1, Math.floor(numberValue));
+}
+
+function normalizePageSizeOptions(options, currentSize) {
+  const source = Array.isArray(options) && options.length > 0 ? options : DEFAULT_PAGE_SIZE_OPTIONS;
+  const values = source
+    .map(item => normalizePageSize(item, 0))
+    .filter(Boolean);
+
+  if (currentSize && !values.includes(currentSize)) {
+    values.push(currentSize);
+  }
+
+  return [...new Set(values)].sort((a, b) => a - b);
 }
 
 export const UiCheckbox = defineComponent({
@@ -171,6 +195,7 @@ const UiTable = defineComponent({
   setup(props, { slots, attrs }) {
     const page = ref(1);
     const sortState = ref({ key: '', order: '' });
+    const activePageSize = ref(10);
 
     const sortedRows = computed(() => {
       const rows = [...props.dataSource];
@@ -182,9 +207,44 @@ const UiTable = defineComponent({
       });
     });
 
+    const paginationConfig = computed(() => {
+      if (!props.pagination) return null;
+      return typeof props.pagination === 'object' ? props.pagination : {};
+    });
+
+    const pageSizeStorageKey = computed(() => {
+      const key = paginationConfig.value?.pageSizeStorageKey || paginationConfig.value?.storageKey;
+      return key ? `${TABLE_PAGE_SIZE_STORAGE_PREFIX}${key}` : '';
+    });
+
+    function resolvePageSize() {
+      const configured = normalizePageSize(paginationConfig.value?.pageSize, 10);
+      if (!pageSizeStorageKey.value) return configured;
+      return normalizePageSize(getData(pageSizeStorageKey.value, configured), configured);
+    }
+
+    watch(
+      () => [pageSizeStorageKey.value, paginationConfig.value?.pageSize],
+      () => {
+        activePageSize.value = resolvePageSize();
+        page.value = 1;
+      },
+      { immediate: true }
+    );
+
     const pageSize = computed(() => {
-      if (!props.pagination || typeof props.pagination !== 'object') return 0;
-      return props.pagination.pageSize || 10;
+      if (!paginationConfig.value) return 0;
+      return activePageSize.value || normalizePageSize(paginationConfig.value.pageSize, 10);
+    });
+
+    const pageSizeOptions = computed(() => normalizePageSizeOptions(
+      paginationConfig.value?.pageSizeOptions,
+      pageSize.value
+    ));
+
+    const showSizeChanger = computed(() => {
+      if (!paginationConfig.value) return false;
+      return paginationConfig.value.showSizeChanger !== false && pageSizeOptions.value.length > 1;
     });
 
     const visibleRows = computed(() => {
@@ -218,8 +278,34 @@ const UiTable = defineComponent({
       return '';
     }
 
+    function getTotalPages() {
+      return pageSize.value ? Math.max(1, Math.ceil(sortedRows.value.length / pageSize.value)) : 1;
+    }
+
+    function clampPage() {
+      const totalPages = getTotalPages();
+      if (page.value > totalPages) page.value = totalPages;
+      if (page.value < 1) page.value = 1;
+    }
+
+    function updatePageSize(event) {
+      const nextSize = normalizePageSize(event.target.value, pageSize.value);
+      activePageSize.value = nextSize;
+      page.value = 1;
+
+      if (pageSizeStorageKey.value) {
+        setData(pageSizeStorageKey.value, nextSize);
+      }
+    }
+
+    watch(
+      () => [pageSize.value, sortedRows.value.length],
+      () => { clampPage(); }
+    );
+
     return () => {
-      const totalPages = pageSize.value ? Math.max(1, Math.ceil(sortedRows.value.length / pageSize.value)) : 1;
+      const totalPages = getTotalPages();
+      const hasPagination = pageSize.value && sortedRows.value.length > 0 && (totalPages > 1 || showSizeChanger.value);
 
       return h('div', {
         ...attrs,
@@ -278,18 +364,32 @@ const UiTable = defineComponent({
             ])
           ])
         ]),
-        pageSize.value && totalPages > 1 ? h('div', { class: 'ui-pagination' }, [
-          h(UiButton, {
-            size: 'small',
-            disabled: page.value <= 1,
-            onClick: () => { page.value -= 1; }
-          }, () => '上一页'),
-          h('span', {}, `${page.value}/${totalPages}`),
-          h(UiButton, {
-            size: 'small',
-            disabled: page.value >= totalPages,
-            onClick: () => { page.value += 1; }
-          }, () => '下一页')
+        hasPagination ? h('div', { class: 'ui-pagination' }, [
+          h('span', { class: 'ui-pagination-total' }, `共 ${sortedRows.value.length} 条`),
+          showSizeChanger.value ? h('label', { class: 'ui-page-size' }, [
+            h('span', {}, '每页'),
+            h('select', {
+              class: 'ui-page-size-select',
+              value: pageSize.value,
+              onChange: updatePageSize
+            }, pageSizeOptions.value.map(size => h('option', {
+              key: size,
+              value: size
+            }, `${size} 条`)))
+          ]) : null,
+          h('div', { class: 'ui-page-nav' }, [
+            h(UiButton, {
+              size: 'small',
+              disabled: page.value <= 1,
+              onClick: () => { page.value -= 1; }
+            }, () => '上一页'),
+            h('span', { class: 'ui-page-current' }, `${page.value}/${totalPages}`),
+            h(UiButton, {
+              size: 'small',
+              disabled: page.value >= totalPages,
+              onClick: () => { page.value += 1; }
+            }, () => '下一页')
+          ])
         ]) : null
       ]);
     };
@@ -333,11 +433,24 @@ const UiCollapsePanel = defineComponent({
     const collapse = inject('uiCollapse', null);
     const isActive = computed(() => collapse?.activeKeys.value.map(String).includes(panelKey.value));
 
+    function shouldSkipToggle(event) {
+      return event.target?.closest?.('button,a,input,textarea,select,label');
+    }
+
     return () => h('section', { class: 'ui-collapse-panel' }, [
-      h('button', {
-        type: 'button',
+      h('div', {
         class: 'ui-collapse-header',
-        onClick: () => collapse?.toggle(panelKey.value)
+        role: 'button',
+        tabindex: 0,
+        onClick: (event) => {
+          if (shouldSkipToggle(event)) return;
+          collapse?.toggle(panelKey.value);
+        },
+        onKeydown: (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          collapse?.toggle(panelKey.value);
+        }
       }, [
         h('span', { class: ['ui-collapse-arrow', { open: isActive.value }] }, '›'),
         h('span', { class: 'ui-collapse-title' }, slotContent(slots, 'header'))
@@ -715,11 +828,14 @@ const UiPopconfirm = defineComponent({
       class: 'ui-popconfirm',
       onClick: (event) => {
         event.stopPropagation();
-        if (window.confirm(props.title || '确认操作？')) {
-          emit('confirm');
-        } else {
-          emit('cancel');
-        }
+        openProgrammaticModal({
+          title: '确认操作',
+          content: props.title || '确认操作？',
+          okText: props.okText,
+          cancelText: props.cancelText,
+          onOk: () => emit('confirm'),
+          onCancel: () => emit('cancel')
+        }, 'confirm');
       }
     }, slotContent(slots));
   }
