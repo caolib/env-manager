@@ -9,7 +9,16 @@ const defaultSettings = {
     theme: 'system',
     sensitiveFieldsEnabled: true,
     sensitiveKeywords: ['key', 'token', 'password', 'secret', 'credential', 'auth', 'apikey', 'api_key'],
-    layoutMode: 'card' // 'card' | 'table'
+    layoutMode: 'card', // 'card' | 'table'
+    defaultExportFolder: '',
+    startupExportEnabled: false,
+    startupExportMaxFiles: 10
+}
+
+function normalizeMaxFiles(value) {
+    const numberValue = Number(value)
+    if (!Number.isFinite(numberValue)) return defaultSettings.startupExportMaxFiles
+    return Math.max(1, Math.floor(numberValue))
 }
 
 // 从 dbStorage 加载设置
@@ -59,10 +68,28 @@ export function useSettingsStore() {
         set: (val) => { settings.value.layoutMode = val }
     })
 
+    const defaultExportFolder = computed({
+        get: () => settings.value.defaultExportFolder || '',
+        set: (val) => { settings.value.defaultExportFolder = val || '' }
+    })
+
+    const startupExportEnabled = computed({
+        get: () => !!settings.value.startupExportEnabled,
+        set: (val) => { settings.value.startupExportEnabled = !!val }
+    })
+
+    const startupExportMaxFiles = computed({
+        get: () => normalizeMaxFiles(settings.value.startupExportMaxFiles),
+        set: (val) => { settings.value.startupExportMaxFiles = normalizeMaxFiles(val) }
+    })
+
     const setTheme = (theme) => { settings.value.theme = theme }
     const setSensitiveFieldsEnabled = (enabled) => { settings.value.sensitiveFieldsEnabled = enabled }
     const setSensitiveKeywords = (keywords) => { settings.value.sensitiveKeywords = keywords }
     const setLayoutMode = (mode) => { settings.value.layoutMode = mode }
+    const setDefaultExportFolder = (folder) => { settings.value.defaultExportFolder = folder || '' }
+    const setStartupExportEnabled = (enabled) => { settings.value.startupExportEnabled = !!enabled }
+    const setStartupExportMaxFiles = (maxFiles) => { settings.value.startupExportMaxFiles = normalizeMaxFiles(maxFiles) }
     const resetToDefault = () => { settings.value = { ...defaultSettings } }
 
     return {
@@ -74,6 +101,12 @@ export function useSettingsStore() {
         setSensitiveKeywords,
         layoutMode,
         setLayoutMode,
+        defaultExportFolder,
+        setDefaultExportFolder,
+        startupExportEnabled,
+        setStartupExportEnabled,
+        startupExportMaxFiles,
+        setStartupExportMaxFiles,
         resetToDefault
     }
 }

@@ -1,13 +1,23 @@
 <script setup>
 
-import { computed, ref, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
-import { ExportOutlined, ImportOutlined, InboxOutlined } from '@ant-design/icons-vue';
+import { computed, ref, onMounted, watch } from 'vue'
+import { message } from '../ui'
+import {
+    DeleteOutlined,
+    ExportOutlined,
+    EyeOutlined,
+    FolderOpenOutlined,
+    ImportOutlined,
+    InboxOutlined,
+    PlusOutlined,
+    ReloadOutlined
+} from '@ant-design/icons-vue';
 import { useSettingsStore } from '../stores/settings'
 import { useGroupsStore } from '../stores/groups'
 import { useAlternativesStore } from '../stores/alternatives'
 import { getData, setData } from '../utils/store'
 import ImportDiffModal from './ImportDiffModal.vue';
+import EnvConfigDiffModal from './EnvConfigDiffModal.vue';
 
 const settingsStore = useSettingsStore();
 const groupsStore = useGroupsStore();
@@ -17,6 +27,13 @@ const showImportArea = ref(false);
 const showDiffModal = ref(false);
 const currentConfig = ref({});
 const pendingImportConfig = ref({});
+const backupFiles = ref([]);
+const backupFilesLoading = ref(false);
+const cleanupBackupFilesLoading = ref(false);
+const selectedBackupConfig = ref({});
+const selectedBackupFile = ref({});
+const showBackupDiffModal = ref(false);
+let backupFilesLoadTimer = null;
 
 // 普通变量备用值（与 HomeView 保持一致）
 const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
@@ -41,6 +58,21 @@ const sensitiveKeywords = computed({
     set: (val) => { settingsStore.sensitiveKeywords.value = val }
 });
 
+const defaultExportFolder = computed({
+    get: () => settingsStore.defaultExportFolder.value,
+    set: (val) => { settingsStore.defaultExportFolder.value = val }
+});
+
+const startupExportEnabled = computed({
+    get: () => settingsStore.startupExportEnabled.value,
+    set: (val) => { settingsStore.startupExportEnabled.value = val }
+});
+
+const startupExportMaxFiles = computed({
+    get: () => settingsStore.startupExportMaxFiles.value,
+    set: (val) => { settingsStore.startupExportMaxFiles.value = val }
+});
+
 // 临时输入框
 const newKeyword = ref('');
 
@@ -49,6 +81,16 @@ const themeOptions = [
     { label: '跟随系统', value: 'system' },
     { label: '浅色主题', value: 'light' },
     { label: '深色主题', value: 'dark' }
+];
+
+const backupFileColumns = [
+    { title: 'ID', key: 'id', width: 70, sorter: compareNumberField('id') },
+    { title: '导出时间', key: 'exportTime', width: 170, sorter: (a, b) => getSortableTime(a) - getSortableTime(b) },
+    { title: '系统变量数', key: 'systemVarCount', width: 110, sorter: compareNumberField('systemVarCount') },
+    { title: '用户变量数', key: 'userVarCount', width: 110, sorter: compareNumberField('userVarCount') },
+    { title: '系统 Path 数', key: 'systemPathItemCount', width: 110, sorter: compareNumberField('systemPathItemCount') },
+    { title: '用户 Path 数', key: 'userPathItemCount', width: 110, sorter: compareNumberField('userPathItemCount') },
+    { title: '操作', key: 'actions', width: 180 }
 ];
 
 // 加载环境变量
@@ -78,7 +120,10 @@ const getCurrentConfig = () => {
         settings: {
             theme: settingsStore.theme.value,
             sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
-            sensitiveKeywords: settingsStore.sensitiveKeywords.value
+            sensitiveKeywords: settingsStore.sensitiveKeywords.value,
+            defaultExportFolder: settingsStore.defaultExportFolder.value,
+            startupExportEnabled: settingsStore.startupExportEnabled.value,
+            startupExportMaxFiles: settingsStore.startupExportMaxFiles.value
         },
         var_alternatives: getData(ALT_VALUES_KEY, { system: {}, user: {} }),
         disabled_vars: getData(DISABLED_VARS_KEY, { system: {}, user: {} }),
@@ -104,9 +149,16 @@ const exportConfig = () => {
             exportTime: beijingTime.toISOString()
         };
 
-        const result = window.services.exportConfig(configData, fileName);
+        const exportFolder = settingsStore.defaultExportFolder.value?.trim();
+        const result = window.services.exportConfig(
+            configData,
+            fileName,
+            exportFolder,
+            settingsStore.startupExportMaxFiles.value
+        );
         if (result.success) {
             message.success(`配置已导出到: ${result.path}`);
+            loadBackupFiles();
             // 自动打开文件所在位置
             window.services.revealInExplorer(result.path);
         } else {
@@ -137,6 +189,9 @@ const processImport = async (config) => {
             if (s.theme !== undefined) settingsStore.setTheme(s.theme);
             if (s.sensitiveFieldsEnabled !== undefined) settingsStore.setSensitiveFieldsEnabled(!!s.sensitiveFieldsEnabled);
             if (s.sensitiveKeywords !== undefined && Array.isArray(s.sensitiveKeywords)) settingsStore.setSensitiveKeywords(s.sensitiveKeywords);
+            if (s.defaultExportFolder !== undefined) settingsStore.setDefaultExportFolder(s.defaultExportFolder);
+            if (s.startupExportEnabled !== undefined) settingsStore.setStartupExportEnabled(!!s.startupExportEnabled);
+            if (s.startupExportMaxFiles !== undefined) settingsStore.setStartupExportMaxFiles(s.startupExportMaxFiles);
         }
 
         // 导入普通变量备用值
@@ -269,8 +324,325 @@ const processImport = async (config) => {
         const resultMsg = messages.length > 0 ? `导入完成！${messages.join('，')}` : '配置已导入';
         message.success(resultMsg, 5); // 显示5秒
         showImportArea.value = false;
+        loadBackupFiles();
     } catch (error) {
         message.error(`导入配置失败: ${error.message}`);
+    }
+};
+
+function cloneData(value, fallback) {
+    try {
+        return JSON.parse(JSON.stringify(value ?? fallback));
+    } catch {
+        return fallback;
+    }
+}
+
+function hasOwn(value, key) {
+    return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isEmptyConfigValue(value) {
+    return value === undefined
+        || value === null
+        || value === ''
+        || (Array.isArray(value) && value.length === 0);
+}
+
+function countAlternativeItems(root) {
+    return ['system', 'user'].reduce((total, scope) => {
+        const scoped = root?.[scope] || {};
+        return total + Object.values(scoped).reduce((scopeTotal, list) => {
+            return scopeTotal + (Array.isArray(list) ? list.length : 0);
+        }, 0);
+    }, 0);
+}
+
+function normalizeScopedObject(root) {
+    return {
+        system: root?.system && typeof root.system === 'object' ? root.system : {},
+        user: root?.user && typeof root.user === 'object' ? root.user : {}
+    };
+}
+
+function mergeMissingScopedEntries(currentRoot, importRoot) {
+    const merged = normalizeScopedObject(cloneData(currentRoot, { system: {}, user: {} }));
+    const incoming = normalizeScopedObject(importRoot);
+    const addedEntries = [];
+
+    ['system', 'user'].forEach(scope => {
+        Object.entries(incoming[scope]).forEach(([name, value]) => {
+            if (hasOwn(merged[scope], name)) return;
+            merged[scope][name] = cloneData(value, value);
+            addedEntries.push({ scope, name, value });
+        });
+    });
+
+    return { merged, addedEntries };
+}
+
+function splitPathValue(value) {
+    return String(value ?? '')
+        .split(';')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
+function mergePathValue(currentValue, importValue) {
+    const mergedPaths = [];
+    const seen = new Set();
+    let addedCount = 0;
+
+    splitPathValue(currentValue).forEach(path => {
+        if (seen.has(path)) return;
+        seen.add(path);
+        mergedPaths.push(path);
+    });
+
+    splitPathValue(importValue).forEach(path => {
+        if (seen.has(path)) return;
+        seen.add(path);
+        mergedPaths.push(path);
+        addedCount++;
+    });
+
+    return {
+        value: mergedPaths.join(';'),
+        addedCount
+    };
+}
+
+function isPathVariableName(name) {
+    return String(name || '').toLowerCase() === 'path';
+}
+
+function normalizeEnvVars(vars) {
+    return Array.isArray(vars)
+        ? vars.filter(item => item && item.name).map(item => ({
+            name: String(item.name),
+            value: String(item.value ?? '')
+        }))
+        : [];
+}
+
+function envVarMapByName(vars) {
+    return new Map(normalizeEnvVars(vars).map(item => [item.name.toLowerCase(), item]));
+}
+
+function importSettingIfEmpty(key, incomingValue) {
+    if (incomingValue === undefined) return false;
+
+    const setters = {
+        theme: () => {
+            if (!isEmptyConfigValue(settingsStore.theme.value)) return false;
+            settingsStore.setTheme(incomingValue);
+            return true;
+        },
+        sensitiveFieldsEnabled: () => {
+            if (settingsStore.sensitiveFieldsEnabled.value !== undefined) return false;
+            settingsStore.setSensitiveFieldsEnabled(!!incomingValue);
+            return true;
+        },
+        sensitiveKeywords: () => {
+            if (!Array.isArray(incomingValue)) return false;
+            const current = Array.isArray(settingsStore.sensitiveKeywords.value)
+                ? settingsStore.sensitiveKeywords.value
+                : [];
+            const merged = [...current];
+            incomingValue.forEach(keyword => {
+                if (!merged.includes(keyword)) merged.push(keyword);
+            });
+            if (merged.length === current.length) return false;
+            settingsStore.setSensitiveKeywords(merged);
+            return true;
+        },
+        defaultExportFolder: () => {
+            if (!isEmptyConfigValue(settingsStore.defaultExportFolder.value)) return false;
+            settingsStore.setDefaultExportFolder(incomingValue);
+            return true;
+        },
+        startupExportEnabled: () => {
+            if (settingsStore.startupExportEnabled.value !== undefined) return false;
+            settingsStore.setStartupExportEnabled(!!incomingValue);
+            return true;
+        },
+        startupExportMaxFiles: () => {
+            if (!isEmptyConfigValue(settingsStore.startupExportMaxFiles.value)) return false;
+            settingsStore.setStartupExportMaxFiles(incomingValue);
+            return true;
+        }
+    };
+
+    return setters[key]?.() || false;
+}
+
+async function importEnvVarsIncrementally(envVars) {
+    const result = {
+        added: 0,
+        mergedPathVars: 0,
+        mergedPathItems: 0,
+        skippedExisting: 0,
+        skippedByPermission: 0,
+        failed: 0
+    };
+
+    const importSystemVars = normalizeEnvVars(envVars?.system_vars);
+    const importUserVars = normalizeEnvVars(envVars?.user_vars);
+    const currentSystemMap = envVarMapByName(systemVars.value);
+    const currentUserMap = envVarMapByName(userVars.value);
+
+    if (!isAdmin.value && importSystemVars.length > 0) {
+        message.warning('当前无管理员权限：系统环境变量增量导入将跳过');
+    }
+
+    async function importScope(vars, currentMap, isSystem) {
+        for (const item of vars) {
+            const key = item.name.toLowerCase();
+            const currentItem = currentMap.get(key);
+
+            if (isSystem && !isAdmin.value) {
+                result.skippedByPermission++;
+                continue;
+            }
+
+            if (!currentItem) {
+                try {
+                    await window.services.setEnvVar(item.name, item.value, isSystem);
+                    currentMap.set(key, item);
+                    result.added++;
+                } catch (error) {
+                    console.error(`增量导入环境变量 ${item.name} 失败:`, error);
+                    result.failed++;
+                }
+                continue;
+            }
+
+            if (!isPathVariableName(item.name)) {
+                result.skippedExisting++;
+                continue;
+            }
+
+            const mergedPath = mergePathValue(currentItem.value, item.value);
+            if (mergedPath.value === currentItem.value) {
+                result.skippedExisting++;
+                continue;
+            }
+
+            try {
+                await window.services.setEnvVar(currentItem.name, mergedPath.value, isSystem);
+                currentMap.set(key, { ...currentItem, value: mergedPath.value });
+                result.mergedPathVars++;
+                result.mergedPathItems += mergedPath.addedCount;
+            } catch (error) {
+                console.error(`合并 Path 变量 ${currentItem.name} 失败:`, error);
+                result.failed++;
+            }
+        }
+    }
+
+    await importScope(importSystemVars, currentSystemMap, true);
+    await importScope(importUserVars, currentUserMap, false);
+
+    return result;
+}
+
+// 增量导入：只添加当前不存在的配置；Path 变量按路径项合并去重。
+const processIncrementalImport = async (config) => {
+    try {
+        checkAdminPrivileges();
+        await loadEnvVars();
+
+        let importedSettingsCount = 0;
+        let importedAltsCount = 0;
+        let importedDisabledCount = 0;
+        let importedGroupsCount = 0;
+        let deletedDisabledEnvCount = 0;
+
+        if (config.settings && typeof config.settings === 'object') {
+            Object.entries(config.settings).forEach(([key, value]) => {
+                if (importSettingIfEmpty(key, value)) importedSettingsCount++;
+            });
+        }
+
+        if (config.var_alternatives && typeof config.var_alternatives === 'object') {
+            const currentAlts = getData(ALT_VALUES_KEY, { system: {}, user: {} });
+            const { merged, addedEntries } = mergeMissingScopedEntries(currentAlts, config.var_alternatives);
+
+            if (addedEntries.length > 0) {
+                setData(ALT_VALUES_KEY, cloneData(merged, { system: {}, user: {} }));
+                alternativesStore.reloadAlternatives();
+                importedAltsCount = countAlternativeItems({
+                    system: Object.fromEntries(addedEntries.filter(item => item.scope === 'system').map(item => [item.name, item.value])),
+                    user: Object.fromEntries(addedEntries.filter(item => item.scope === 'user').map(item => [item.name, item.value]))
+                });
+            }
+        }
+
+        if (config.disabled_vars && typeof config.disabled_vars === 'object') {
+            const currentDisabled = getData(DISABLED_VARS_KEY, { system: {}, user: {} });
+            const { merged, addedEntries } = mergeMissingScopedEntries(currentDisabled, config.disabled_vars);
+
+            if (addedEntries.length > 0) {
+                setData(DISABLED_VARS_KEY, cloneData(merged, { system: {}, user: {} }));
+                importedDisabledCount = addedEntries.length;
+
+                for (const item of addedEntries) {
+                    if (item.scope === 'system' && !isAdmin.value) continue;
+
+                    try {
+                        await window.services.deleteEnvVar(item.name, item.scope === 'system');
+                        deletedDisabledEnvCount++;
+                    } catch {
+                        // 忽略删除失败（可能已不存在）
+                    }
+                }
+            }
+        }
+
+        if (config.groups && Array.isArray(config.groups)) {
+            const existingGroupKeys = new Set(groupsStore.groups.value.map(group => {
+                return `${group.scope || 'user'}:${group.name}`.toLowerCase();
+            }));
+
+            config.groups.forEach(group => {
+                if (!group?.name) return;
+                const key = `${group.scope || 'user'}:${group.name}`.toLowerCase();
+                if (existingGroupKeys.has(key)) return;
+
+                groupsStore.addGroup(cloneData(group, group));
+                existingGroupKeys.add(key);
+                importedGroupsCount++;
+            });
+        }
+
+        const envResult = config.env_vars
+            ? await importEnvVarsIncrementally(config.env_vars)
+            : { added: 0, mergedPathVars: 0, mergedPathItems: 0, skippedExisting: 0, skippedByPermission: 0, failed: 0 };
+
+        await loadEnvVars();
+
+        const messages = [];
+        if (envResult.added > 0 || envResult.mergedPathVars > 0 || envResult.failed > 0 || envResult.skippedByPermission > 0) {
+            messages.push(
+                `环境变量: 新增 ${envResult.added} 个`
+                + `${envResult.mergedPathVars > 0 ? `，合并 Path ${envResult.mergedPathVars} 个(${envResult.mergedPathItems} 项)` : ''}`
+                + `${envResult.failed > 0 ? `，失败 ${envResult.failed} 个` : ''}`
+                + `${envResult.skippedByPermission > 0 ? `，跳过系统变量 ${envResult.skippedByPermission} 个(需管理员权限)` : ''}`
+            );
+        }
+        if (importedSettingsCount > 0) messages.push(`应用设置: ${importedSettingsCount} 项`);
+        if (importedAltsCount > 0) messages.push(`备用值: ${importedAltsCount} 个`);
+        if (importedDisabledCount > 0) {
+            messages.push(`禁用变量: ${importedDisabledCount} 个${deletedDisabledEnvCount > 0 ? `，已删除环境变量 ${deletedDisabledEnvCount} 个` : ''}`);
+        }
+        if (importedGroupsCount > 0) messages.push(`变量组: ${importedGroupsCount} 个`);
+
+        const resultMsg = messages.length > 0 ? `增量导入完成！${messages.join('，')}` : '没有需要增量导入的配置';
+        message.success(resultMsg, 5);
+        showImportArea.value = false;
+        loadBackupFiles();
+    } catch (error) {
+        message.error(`增量导入配置失败: ${error.message}`);
     }
 };
 
@@ -292,7 +664,12 @@ const handleBeforeUpload = (file) => {
     return false; // 阻止自动上传
 };
 
-const handleDiffConfirm = async () => {
+const handleDiffConfirm = async (mode = 'overwrite') => {
+    if (mode === 'incremental') {
+        await processIncrementalImport(pendingImportConfig.value);
+        return;
+    }
+
     await processImport(pendingImportConfig.value);
 };
 
@@ -319,138 +696,642 @@ const removeSensitiveKeyword = (index) => {
     message.success(`已删除关键词: ${keyword}`);
 };
 
+const selectDefaultExportFolder = () => {
+    try {
+        const result = window.services.selectExportFolder(defaultExportFolder.value?.trim());
+        if (result.success) {
+            defaultExportFolder.value = result.path;
+            loadBackupFiles();
+            message.success('默认导出文件夹已设置');
+        } else if (result.message !== '用户取消选择') {
+            message.error(`选择文件夹失败: ${result.message}`);
+        }
+    } catch (error) {
+        message.error(`选择文件夹失败: ${error.message}`);
+    }
+};
+
+const openDefaultExportFolder = () => {
+    const folder = defaultExportFolder.value?.trim();
+    if (!folder) {
+        message.warning('请先设置默认导出文件夹');
+        return;
+    }
+
+    try {
+        window.services.openFolder(folder);
+    } catch (error) {
+        message.error(`打开文件夹失败: ${error.message}`);
+    }
+};
+
+const clearDefaultExportFolder = () => {
+    defaultExportFolder.value = '';
+    backupFiles.value = [];
+    message.success('已清空默认导出文件夹');
+};
+
+const formatFileTime = (value) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('zh-CN', { hour12: false });
+};
+
+function compareNumberField(field) {
+    return (a, b) => (Number(a?.[field]) || 0) - (Number(b?.[field]) || 0);
+}
+
+function getSortableTime(record) {
+    if (typeof record?.mtimeMs === 'number') return record.mtimeMs;
+    const date = new Date(record?.exportTime || 0);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function sortObjectKeys(value) {
+    if (Array.isArray(value)) {
+        return value.map(sortObjectKeys);
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.keys(value).sort().reduce((result, key) => {
+            result[key] = sortObjectKeys(value[key]);
+            return result;
+        }, {});
+    }
+
+    return value;
+}
+
+function normalizeConfigForCompare(config) {
+    const clone = JSON.parse(JSON.stringify(config || {}));
+    if (clone && typeof clone === 'object' && !Array.isArray(clone)) {
+        delete clone.exportTime;
+    }
+    return sortObjectKeys(clone);
+}
+
+function isSameConfig(left, right) {
+    return JSON.stringify(normalizeConfigForCompare(left)) === JSON.stringify(normalizeConfigForCompare(right));
+}
+
+function hasBackupConfigDiff(config) {
+    return !isSameConfig(getCurrentConfig(), config);
+}
+
+const loadBackupFiles = async () => {
+    const folder = defaultExportFolder.value?.trim();
+    if (!folder) {
+        backupFiles.value = [];
+        return;
+    }
+
+    backupFilesLoading.value = true;
+    try {
+        await loadEnvVars();
+        const result = window.services.listExportConfigFiles(folder);
+        if (result.success) {
+            backupFiles.value = (result.files || []).map((file, index) => ({
+                ...file,
+                id: index + 1,
+                hasConfigDiff: hasBackupFileConfigDiff(file, folder)
+            }));
+        } else {
+            backupFiles.value = [];
+            message.error(`读取配置文件列表失败: ${result.message}`);
+        }
+    } catch (error) {
+        backupFiles.value = [];
+        message.error(`读取配置文件列表失败: ${error.message}`);
+    } finally {
+        backupFilesLoading.value = false;
+    }
+};
+
+function hasBackupFileConfigDiff(file, folder) {
+    const result = window.services.readExportConfigFile(file.path, folder);
+    if (!result.success) return true;
+    return hasBackupConfigDiff(result.data);
+}
+
+const getBackupFileRowProps = (record) => {
+    if (!record.hasConfigDiff) return {};
+
+    return {
+        class: 'backup-file-row-clickable',
+        onClick: () => showBackupConfigDiff(record)
+    };
+};
+
+const showBackupConfigDiff = async (record) => {
+    const folder = defaultExportFolder.value?.trim();
+    if (!folder) {
+        message.warning('请先设置默认导出文件夹');
+        return;
+    }
+
+    try {
+        const result = window.services.readExportConfigFile(record.path, folder);
+        if (!result.success) {
+            message.error(`读取配置文件失败: ${result.message}`);
+            return;
+        }
+
+        await loadEnvVars();
+        currentConfig.value = getCurrentConfig();
+        selectedBackupConfig.value = result.data;
+        selectedBackupFile.value = record;
+        showBackupDiffModal.value = true;
+    } catch (error) {
+        message.error(`读取配置文件失败: ${error.message}`);
+    }
+};
+
+const cleanupDuplicateBackupFiles = async () => {
+    const folder = defaultExportFolder.value?.trim();
+    if (!folder) {
+        message.warning('请先设置默认导出文件夹');
+        return;
+    }
+
+    cleanupBackupFilesLoading.value = true;
+    try {
+        await loadEnvVars();
+        const result = window.services.cleanupDuplicateConfigFiles(folder, getCurrentConfig());
+        if (!result.success) {
+            message.error(`清理重复备份失败: ${result.message}`);
+            return;
+        }
+
+        if (result.removedCount > 0) {
+            const currentText = result.currentMatchRemovedCount > 0
+                ? `，其中 ${result.currentMatchRemovedCount} 个与当前配置相同`
+                : '';
+            message.success(`清理完成：已将 ${result.removedCount} 个重复备份移入回收站${currentText}`);
+        } else {
+            message.info('没有需要清理的重复备份');
+        }
+        await loadBackupFiles();
+    } catch (error) {
+        message.error(`清理重复备份失败: ${error.message}`);
+    } finally {
+        cleanupBackupFilesLoading.value = false;
+    }
+};
+
+const importBackupFile = async (record) => {
+    const folder = defaultExportFolder.value?.trim();
+    if (!folder) {
+        message.warning('请先设置默认导出文件夹');
+        return;
+    }
+
+    try {
+        const result = window.services.readExportConfigFile(record.path, folder);
+        if (!result.success) {
+            message.error(`读取配置文件失败: ${result.message}`);
+            return;
+        }
+
+        await loadEnvVars();
+        currentConfig.value = getCurrentConfig();
+        pendingImportConfig.value = result.data;
+        showDiffModal.value = true;
+    } catch (error) {
+        message.error(`读取配置文件失败: ${error.message}`);
+    }
+};
+
+watch(defaultExportFolder, (folder) => {
+    if (backupFilesLoadTimer) {
+        window.clearTimeout(backupFilesLoadTimer);
+    }
+
+    if (!folder?.trim()) {
+        backupFiles.value = [];
+        return;
+    }
+
+    backupFilesLoadTimer = window.setTimeout(() => {
+        loadBackupFiles();
+    }, 300);
+});
+
 onMounted(() => {
     checkAdminPrivileges();
     loadEnvVars();
+    loadBackupFiles();
 });
 
 
 </script>
 
 <template>
-    <div class="config-view">
-        <div class="config-section">
-            <h3>外观设置</h3>
-            <div class="config-row">
-                <a-typography-text style="margin-right: 10px;">主题:</a-typography-text>
-                <a-radio-group v-model:value="theme" button-style="solid">
-                    <a-radio-button v-for="option in themeOptions" :key="option.value" :value="option.value">
-                        {{ option.label }}
-                    </a-radio-button>
-                </a-radio-group>
-            </div>
-        </div>
+    <div :class="['config-view', { 'diff-mode': showBackupDiffModal }]">
+        <EnvConfigDiffModal v-if="showBackupDiffModal" v-model:open="showBackupDiffModal"
+            :currentConfig="currentConfig" :compareConfig="selectedBackupConfig" :compareFile="selectedBackupFile" />
 
-        <div class="config-section">
-            <h3>敏感字段保护</h3>
-            <div class="config-row">
-                <a-typography-text style="margin-right: 10px;">启用敏感字段隐藏:</a-typography-text>
-                <a-switch v-model:checked="sensitiveFieldsEnabled" />
-                <a-typography-text style="margin-left: 10px; font-size: 12px; color: var(--ant-color-text-secondary);">
-                    当变量名包含配置的关键词时，隐藏值一半内容
-                </a-typography-text>
+        <template v-else>
+        <section class="config-category">
+            <div class="category-heading">
+                <h3>界面</h3>
             </div>
-
-            <div v-if="sensitiveFieldsEnabled" style="margin-top: 16px;">
-                <a-typography-text style="display: block; margin-bottom: 8px;">敏感关键词列表:</a-typography-text>
-                <div style="margin-bottom: 12px; display: flex; gap: 8px;">
-                    <a-input v-model:value="newKeyword" placeholder="输入关键词（如：password、secret、token）" size="small"
-                        @keydown.enter="addSensitiveKeyword" style="flex: 1; max-width: 300px;" />
-                    <a-button type="primary" size="small" @click="addSensitiveKeyword">添加</a-button>
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    <a-tag v-for="(keyword, index) in sensitiveKeywords" :key="index" closable
-                        @close="removeSensitiveKeyword(index)" color="blue">
-                        {{ keyword }}
-                    </a-tag>
+            <div class="category-content">
+                <div class="setting-row">
+                    <a-typography-text class="setting-label">主题</a-typography-text>
+                    <div class="setting-control">
+                        <a-radio-group v-model:value="theme" button-style="solid" class="theme-radio-group">
+                            <a-radio-button v-for="option in themeOptions" :key="option.value" :value="option.value">
+                                {{ option.label }}
+                            </a-radio-button>
+                        </a-radio-group>
+                    </div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <div class="config-section">
-            <h3>数据备份</h3>
-            <div class="config-row" style="gap: 10px; justify-content: flex-start; margin-bottom: 16px;">
-                <a-button type="primary" @click="exportConfig">
-                    <ExportOutlined />
-                    导出备份
-                </a-button>
-                <a-button :type="showImportArea ? 'primary' : 'default'" @click="showImportArea = !showImportArea">
-                    <ImportOutlined />
-                    导入备份
-                </a-button>
+        <section class="config-category">
+            <div class="category-heading">
+                <h3>敏感字段</h3>
             </div>
+            <div class="category-content">
+                <div class="setting-row">
+                    <a-typography-text class="setting-label">隐藏敏感字段</a-typography-text>
+                    <div class="setting-control">
+                        <a-switch v-model:checked="sensitiveFieldsEnabled" />
+                        <span class="setting-note">变量名包含关键词时隐藏部分值</span>
+                    </div>
+                </div>
 
-            <div v-if="showImportArea" class="import-area">
-                <a-alert type="warning" show-icon style="margin-bottom: 16px;">
-                    <template #message>
-                        <strong>导入须知</strong>
-                    </template>
-                    <template #description>
-                        <ul style="margin: 0; padding-left: 20px;">
-                            <li>建议在导入前先<strong>导出当前配置</strong>作为备份。</li>
-                            <li>导入的配置将<strong>完全覆盖</strong>当前的设置、变量组和环境变量。</li>
-                        </ul>
-                    </template>
-                </a-alert>
-
-                <a-upload-dragger name="file" :multiple="false" accept=".json" :before-upload="handleBeforeUpload"
-                    :show-upload-list="false">
-                    <p class="ant-upload-drag-icon">
-                        <InboxOutlined />
-                    </p>
-                    <p class="ant-upload-text">点击或将配置文件拖拽到此区域</p>
-                    <p class="ant-upload-hint">
-                        仅支持 .json 格式的备份文件
-                    </p>
-                </a-upload-dragger>
+                <div v-if="sensitiveFieldsEnabled" class="setting-row align-start">
+                    <a-typography-text class="setting-label">关键词</a-typography-text>
+                    <div class="keyword-control">
+                        <div class="keyword-input-row">
+                            <a-input v-model:value="newKeyword" placeholder="输入关键词（如：password、secret、token）"
+                                size="small" @keydown.enter="addSensitiveKeyword" class="keyword-input" />
+                            <a-button type="primary" size="small" @click="addSensitiveKeyword">
+                                <PlusOutlined />
+                                添加
+                            </a-button>
+                        </div>
+                        <div class="keyword-tags">
+                            <a-tag v-for="(keyword, index) in sensitiveKeywords" :key="index" closable
+                                @close="removeSensitiveKeyword(index)" color="blue">
+                                {{ keyword }}
+                            </a-tag>
+                        </div>
+                    </div>
+                </div>
             </div>
+        </section>
 
-            <div style="text-align: left; margin-top: 8px; color: var(--ant-color-text-secondary); font-size: 12px;">
-                备份包含应用配置、变量组和所有环境变量
+        <section class="config-category">
+            <div class="category-heading">
+                <h3>导出位置</h3>
             </div>
-        </div>
+            <div class="category-content">
+                <div class="setting-row">
+                    <a-typography-text class="setting-label">默认文件夹</a-typography-text>
+                    <div class="export-folder-control">
+                        <a-input v-model:value="defaultExportFolder" placeholder="选择默认导出文件夹" allow-clear
+                            class="export-folder-input" />
+                        <div class="export-folder-actions">
+                            <a-button @click="selectDefaultExportFolder">
+                                <FolderOpenOutlined />
+                                选择
+                            </a-button>
+                            <a-button @click="openDefaultExportFolder" :disabled="!defaultExportFolder">
+                                <FolderOpenOutlined />
+                                打开
+                            </a-button>
+                            <a-button danger @click="clearDefaultExportFolder" :disabled="!defaultExportFolder">
+                                <DeleteOutlined />
+                                清空
+                            </a-button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="config-category">
+            <div class="category-heading">
+                <h3>自动备份</h3>
+            </div>
+            <div class="category-content">
+                <div class="setting-row">
+                    <a-typography-text class="setting-label">启动时导出</a-typography-text>
+                    <div class="setting-control">
+                        <a-switch v-model:checked="startupExportEnabled" />
+                    </div>
+                </div>
+
+                <div v-if="startupExportEnabled" class="setting-row">
+                    <a-typography-text class="setting-label">最大保留文件数</a-typography-text>
+                    <div class="setting-control">
+                        <a-input-number v-model:value="startupExportMaxFiles" :min="1" :max="999" :precision="0" />
+                        <span class="setting-note">默认导出目录内仅保留最新的配置备份</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="config-category">
+            <div class="category-heading">
+                <h3>备份文件</h3>
+            </div>
+            <div class="category-content">
+                <div class="setting-row align-start">
+                    <a-typography-text class="setting-label">备份操作</a-typography-text>
+                    <div class="backup-actions">
+                        <a-button type="primary" @click="exportConfig">
+                            <ExportOutlined />
+                            导出备份
+                        </a-button>
+                        <a-button :type="showImportArea ? 'primary' : 'default'"
+                            @click="showImportArea = !showImportArea">
+                            <ImportOutlined />
+                            导入备份
+                        </a-button>
+                        <span class="setting-note">备份包含应用配置、变量组和所有环境变量</span>
+                    </div>
+                </div>
+
+                <div v-if="defaultExportFolder" class="setting-row align-start">
+                    <a-typography-text class="setting-label">目录文件</a-typography-text>
+                    <div class="backup-file-list">
+                        <div class="backup-file-toolbar">
+                            <a-button size="small" @click="loadBackupFiles" :loading="backupFilesLoading">
+                                <ReloadOutlined />
+                                刷新
+                            </a-button>
+                            <a-popconfirm title="确定清理重复备份文件吗？会将配置内容完全相同的旧备份移入回收站。" ok-text="确定"
+                                cancel-text="取消" @confirm="cleanupDuplicateBackupFiles">
+                                <a-button size="small" danger :loading="cleanupBackupFilesLoading"
+                                    :disabled="backupFilesLoading || backupFiles.length === 0">
+                                    <DeleteOutlined />
+                                    清理重复
+                                </a-button>
+                            </a-popconfirm>
+                            <span class="setting-note">{{ backupFiles.length }} 个配置文件</span>
+                        </div>
+
+                        <a-table :dataSource="backupFiles" :columns="backupFileColumns" :loading="backupFilesLoading"
+                            :pagination="{ pageSize: 10, size: 'small' }" :rowKey="record => record.path" size="small"
+                            :customRow="getBackupFileRowProps" class="backup-file-table"
+                            :locale="{ emptyText: '当前目录没有配置文件' }">
+                            <template #bodyCell="{ column, record }">
+                                <template v-if="column.key === 'id'">
+                                    {{ record.id }}
+                                </template>
+
+                                <template v-else-if="column.key === 'exportTime'">
+                                    {{ formatFileTime(record.exportTime) }}
+                                </template>
+
+                                <template v-else-if="column.key === 'systemVarCount'">
+                                    {{ record.systemVarCount || 0 }}
+                                </template>
+
+                                <template v-else-if="column.key === 'userVarCount'">
+                                    {{ record.userVarCount || 0 }}
+                                </template>
+
+                                <template v-else-if="column.key === 'systemPathItemCount'">
+                                    {{ record.systemPathItemCount || 0 }}
+                                </template>
+
+                                <template v-else-if="column.key === 'userPathItemCount'">
+                                    {{ record.userPathItemCount || 0 }}
+                                </template>
+
+                                <template v-else-if="column.key === 'actions'">
+                                    <a-space :size="4">
+                                        <a-button v-if="record.hasConfigDiff" size="small" type="link"
+                                            @click.stop="showBackupConfigDiff(record)">
+                                            <EyeOutlined />
+                                            差异
+                                        </a-button>
+                                        <a-button size="small" type="link" @click.stop="importBackupFile(record)">
+                                            <ImportOutlined />
+                                            导入
+                                        </a-button>
+                                    </a-space>
+                                </template>
+                            </template>
+                        </a-table>
+                    </div>
+                </div>
+
+                <div v-if="showImportArea" class="setting-row align-start">
+                    <a-typography-text class="setting-label">导入文件</a-typography-text>
+                    <div class="import-area">
+                        <a-alert type="warning" show-icon class="import-alert">
+                            <template #message>
+                                <strong>导入须知</strong>
+                            </template>
+                            <template #description>
+                                <ul class="import-tips">
+                                    <li>建议在导入前先<strong>导出当前配置</strong>作为备份。</li>
+                                    <li>核对差异后可选择<strong>覆盖导入</strong>或<strong>增量导入</strong>。</li>
+                                    <li>增量导入只添加当前不存在的配置；Path 变量会合并路径项并去重。</li>
+                                </ul>
+                            </template>
+                        </a-alert>
+
+                        <a-upload-dragger name="file" :multiple="false" accept=".json"
+                            :before-upload="handleBeforeUpload" :show-upload-list="false">
+                            <p class="ant-upload-drag-icon">
+                                <InboxOutlined />
+                            </p>
+                            <p class="ant-upload-text">点击或将配置文件拖拽到此区域</p>
+                            <p class="ant-upload-hint">
+                                仅支持 .json 格式的备份文件
+                            </p>
+                        </a-upload-dragger>
+                    </div>
+                </div>
+            </div>
+        </section>
 
         <ImportDiffModal v-model:open="showDiffModal" :currentConfig="currentConfig" :importConfig="pendingImportConfig"
             @confirm="handleDiffConfirm" />
+        </template>
     </div>
 </template>
 
 <style scoped>
-.import-area {
-    background: rgba(0, 0, 0, 0.02);
-    padding: 20px;
-    border-radius: 8px;
-    border: 1px solid var(--ant-border-color-split);
-    margin-bottom: 16px;
-    width: 100%;
-}
-
 div.config-view {
-    display: flex;
-    justify-content: start;
-    align-items: center;
+    width: 100%;
+    max-width: 1080px;
+    box-sizing: border-box;
     padding: 20px;
-    flex-direction: column;
     margin: 0 auto;
 }
 
-.config-section {
-    width: 100%;
-    margin-bottom: 20px;
+div.config-view.diff-mode {
+    max-width: none;
+    height: calc(100vh - 64px);
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 20px;
+    margin: 0;
 }
 
-.config-section h3 {
-    margin: 0 0 16px 0;
+.config-category {
+    width: 100%;
+    padding: 18px 0 22px;
+    border-bottom: 1px solid var(--ant-color-split, var(--ant-color-border));
+}
+
+.config-category:first-child {
+    padding-top: 0;
+}
+
+.config-category:last-of-type {
+    border-bottom: none;
+}
+
+.category-heading h3 {
+    margin: 0 0 12px;
     font-size: 16px;
     font-weight: 600;
+    line-height: 22px;
 }
 
-div.config-row {
+.category-content {
     display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+    border-top: 1px solid var(--ant-color-split, var(--ant-color-border));
+}
+
+.setting-row {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 16px;
+    align-items: center;
+    min-height: 32px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--ant-color-split, var(--ant-color-border));
+}
+
+.setting-row:last-child {
+    border-bottom: none;
+}
+
+.setting-row.align-start {
     align-items: flex-start;
-    padding: 12px 0;
+}
+
+.setting-label {
+    line-height: 32px;
+    font-weight: 500;
+    color: var(--ant-color-text);
+    white-space: nowrap;
+}
+
+.setting-control,
+.backup-actions,
+.export-folder-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.setting-note {
+    color: var(--ant-color-text-secondary);
+    font-size: 12px;
+    line-height: 20px;
+}
+
+.theme-radio-group {
+    max-width: 100%;
+}
+
+.keyword-control {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.keyword-input-row {
+    display: flex;
+    gap: 8px;
     width: 100%;
-    gap: 10px;
+    max-width: 520px;
+}
+
+.keyword-input {
+    flex: 1;
+    min-width: 180px;
+}
+
+.keyword-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.export-folder-control {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+}
+
+.backup-file-list {
+    width: 100%;
+    min-width: 0;
+}
+
+.backup-file-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.backup-file-name {
+    color: var(--ant-color-primary);
+    cursor: pointer;
+    font-weight: 500;
+    word-break: break-all;
+}
+
+:deep(.backup-file-table .backup-file-row-clickable) {
+    cursor: pointer;
+}
+
+:deep(.backup-file-table .ant-table-cell) {
+    vertical-align: middle;
+}
+
+.import-area {
+    width: 100%;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--ant-color-split, var(--ant-color-border));
+    background: var(--ant-color-fill-quaternary);
+}
+
+.import-alert {
+    margin-bottom: 16px;
+}
+
+.import-tips {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.export-folder-input {
+    min-width: 0;
 }
 
 .forbidden-item {
@@ -459,5 +1340,25 @@ div.config-row {
 
 .type-icon {
     margin-right: 8px;
+}
+
+@media (max-width: 760px) {
+    div.config-view {
+        padding: 14px;
+    }
+
+    .setting-row,
+    .export-folder-control {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .setting-label {
+        line-height: 22px;
+    }
+
+    .keyword-input-row {
+        flex-wrap: wrap;
+    }
 }
 </style>

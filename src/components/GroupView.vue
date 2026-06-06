@@ -11,9 +11,10 @@ import {
     SearchOutlined,
     CopyOutlined
 } from '@ant-design/icons-vue';
-import { message, Modal } from 'ant-design-vue';
+import { message, Modal } from '../ui';
 import { useGroupsStore } from '../stores/groups';
 import { useAlternativesStore } from '../stores/alternatives';
+import { exportAfterVariableChange } from '../utils/configBackup';
 
 const groupsStore = useGroupsStore();
 const alternativesStore = useAlternativesStore();
@@ -84,6 +85,17 @@ const autoCompleteOptions = computed(() => {
     return allEnvVars.value
         .filter(name => name.toLowerCase().includes(search))
         .map(name => ({ value: name }));
+});
+
+const addableAutoCompleteOptions = computed(() => {
+    const existing = new Set(groupForm.value.variables);
+    const seen = new Set();
+    return autoCompleteOptions.value.filter(option => {
+        const value = option.value?.trim();
+        if (!value || existing.has(value) || seen.has(value)) return false;
+        seen.add(value);
+        return true;
+    });
 });
 
 // 获取某个变量的推荐值（当前值 + 备用值）
@@ -176,6 +188,18 @@ const addVariableToGroup = (val) => {
     }
     groupForm.value.variables.push(name);
     newVarName.value = '';
+};
+
+const addAllVariablesFromOptions = () => {
+    const values = addableAutoCompleteOptions.value.map(option => option.value.trim());
+    if (values.length === 0) {
+        message.info('当前下拉列表没有可添加的变量');
+        return;
+    }
+
+    groupForm.value.variables.push(...values);
+    newVarName.value = '';
+    message.success(`已添加 ${values.length} 个变量`);
 };
 
 const removeVariableFromGroup = (name) => {
@@ -277,6 +301,7 @@ const saveScheme = async () => {
                         return window.services.setEnvVar(name, value, isSystem);
                     });
                     await Promise.all(promises);
+                    await exportAfterVariableChange();
                     message.success('方案已更新并应用到系统环境变量');
                 } catch (error) {
                     message.error(`应用到系统失败: ${error.message}`);
@@ -305,6 +330,7 @@ const applyScheme = async (group, scheme) => {
         await Promise.all(promises);
 
         groupsStore.updateGroup(group.id, { activeSchemeId: scheme.id });
+        await exportAfterVariableChange();
         message.success(`变量组 "${group.name}" 已切换至方案 "${scheme.name}"`);
     } catch (error) {
         message.error(`应用失败: ${error.message}`);
@@ -361,7 +387,6 @@ const applyScheme = async (group, scheme) => {
 
                 <div class="group-content">
                     <div class="variables-list">
-                        <span class="label">包含变量：</span>
                         <a-tag v-for="v in group.variables" :key="v">{{ v }}</a-tag>
                     </div>
 
@@ -415,7 +440,8 @@ const applyScheme = async (group, scheme) => {
         </div>
 
         <!-- 变量组弹窗 -->
-        <a-modal v-model:open="showGroupModal" :title="editingGroup ? '编辑变量组' : '添加变量组'" @ok="saveGroup">
+        <a-modal v-model:open="showGroupModal" :title="editingGroup ? '编辑变量组' : '添加变量组'" width="760px"
+            :body-style="{ minHeight: '360px', overflow: 'visible' }" @ok="saveGroup">
             <a-form layout="vertical">
                 <a-form-item label="组名" required>
                     <a-input v-model:value="groupForm.name" placeholder="例如：Claude 账号" />
@@ -437,6 +463,10 @@ const applyScheme = async (group, scheme) => {
                             </a-input>
                         </a-auto-complete>
                         <a-button @click="addVariableToGroup">添加</a-button>
+                        <a-button @click="addAllVariablesFromOptions"
+                            :disabled="addableAutoCompleteOptions.length === 0">
+                            添加全部
+                        </a-button>
                     </div>
                     <div class="var-tags">
                         <a-tag v-for="v in groupForm.variables" :key="v" closable @close="removeVariableFromGroup(v)">

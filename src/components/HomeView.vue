@@ -57,7 +57,7 @@
                   </div>
                 </template>
 
-                <PathVarTable :env-var="row" :disabled="row.disabled"
+                <PathVarTable :env-var="row" :disabled="row.disabled" :highlight="searchKeyword"
                   @delete="(row) => deleteVarDirect(row, 'system')"
                   @saveDirect="(row) => saveDirectVar(row, 'system')" />
               </a-collapse-panel>
@@ -88,7 +88,7 @@
                   </div>
                 </template>
 
-                <PathVarTable :env-var="row" :disabled="row.disabled"
+                <PathVarTable :env-var="row" :disabled="row.disabled" :highlight="searchKeyword"
                   @delete="(row) => deleteVarDirect(row, 'user')"
                   @saveDirect="(row) => saveDirectVar(row, 'user')" />
               </a-collapse-panel>
@@ -326,8 +326,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, h } from 'vue';
-import { message, Modal } from 'ant-design-vue';
+import { ref, computed, onMounted, watch, h, defineComponent } from 'vue';
+import { Checkbox, message, Modal } from '../ui';
 import {
   PlusOutlined,
   ReloadOutlined,
@@ -349,6 +349,7 @@ import PathVarTable from './PathVarTable.vue';
 import { useSettingsStore } from '../stores/settings';
 import { useAlternativesStore } from '../stores/alternatives';
 import { getData, setData } from '../utils/store';
+import { exportBackupFile, exportAfterVariableChange } from '../utils/configBackup';
 
 const props = defineProps({
   enterAction: {
@@ -458,7 +459,7 @@ const searchKeyword = ref('');
 const loading = ref(false);
 const submitting = ref(false);
 const isAdmin = ref(false);
-const activeKeys = ref(['userPath', 'user']); // 默认展开用户 Path 和用户环境变量
+const activeKeys = ref([]); // 默认折叠所有主页面板
 const systemPathVarActiveKeys = ref([]);
 const userPathVarActiveKeys = ref([]);
 const pathChecking = ref(false);
@@ -978,37 +979,11 @@ function showFirstTimeWarning() {
 // 导出当前配置
 function exportCurrentConfig() {
   try {
-    // 使用东八区时间
-    const now = new Date();
-    const beijingTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
-    const timestamp = beijingTime.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const fileName = `env-manager-初始备份-${timestamp}.json`;
-
-    const configData = {
-      version: '1.2.0',
-      exportTime: beijingTime.toISOString(),
-      settings: {
-        theme: settingsStore.theme.value,
-        sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
-        sensitiveKeywords: settingsStore.sensitiveKeywords.value
-      },
-      var_alternatives: alternativesStore.alternatives.value,
-      disabled_vars: disabledVarsState.value,
-      env_vars: {
-        system_vars: systemVars.value,
-        user_vars: userVars.value
-      }
-    };
-
-    const result = window.services.exportConfig(configData, fileName);
+    const result = exportBackupFile('env-manager-初始备份', { reveal: true });
     if (result.success) {
       message.success(`备份已导出到: ${result.path}`);
-      // 自动打开文件所在位置
-      window.services.revealInExplorer(result.path);
-    } else {
-      if (result.message !== '用户取消保存') {
-        message.error(`导出失败: ${result.message}`);
-      }
+    } else if (result.message !== '用户取消保存') {
+      message.error(`导出失败: ${result.message}`);
     }
   } catch (error) {
     message.error(`导出配置失败: ${error.message}`);
@@ -1020,16 +995,9 @@ function exportCurrentConfig() {
 function checkAdminPrivileges() {
   try {
     isAdmin.value = window.services.checkAdminPrivileges();
-    // 根据管理员权限设置默认展开的面板
-    if (isAdmin.value) {
-      activeKeys.value = ['systemPath', 'userPath', 'system', 'user']; // 有管理员权限时展开所有
-    } else {
-      activeKeys.value = ['userPath', 'user']; // 无管理员权限时展开用户 Path 和用户变量
-    }
   } catch (error) {
     console.error('检查管理员权限失败:', error);
     isAdmin.value = false;
-    activeKeys.value = ['userPath', 'user'];
   }
 }
 
@@ -1209,6 +1177,7 @@ async function handleSubmit() {
     originalVarName.value = '';
     resetAlternativesState();
     await loadEnvVars();
+    await exportAfterVariableChange();
   } catch (error) {
     const action = editMode.value ? '更新' : '添加';
     message.error(`${action}失败: ${error.message}`);
@@ -1231,9 +1200,10 @@ async function saveDirectVar(row, scope) {
       // 启用的，直接 setEnvVar
       await window.services.setEnvVar(row.name, row.value, isSystem);
     }
-    
+
     message.success(`变量 "${row.name}" 更新成功${disabledInfo ? '（已禁用）' : ''}`);
     await loadEnvVars();
+    await exportAfterVariableChange();
   } catch (error) {
     message.error(`更新失败: ${error.message}`);
     console.error('Error direct saving env var:', error);
@@ -1263,6 +1233,7 @@ async function deleteVarDirect(row, scope) {
     alternativesStore.removeAllAlternatives(scope, row.name);
     message.success(`变量 "${row.name}" 删除成功`);
     await loadEnvVars();
+    await exportAfterVariableChange();
   } catch (error) {
     message.error(`删除失败: ${error.message}`);
     console.error('Error deleting env var:', error);
@@ -1270,22 +1241,243 @@ async function deleteVarDirect(row, scope) {
 }
 
 
+function getPathItems(value) {
+  return String(value || '')
+    .split(';')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function createPathCheckSummary(totalPaths, existCount, notExistCount) {
+  return h('div', { style: { marginBottom: '16px' } }, [
+    h('p', { style: { marginBottom: '8px' } }, `检测到 ${totalPaths} 个路径`),
+    h('p', { style: { marginBottom: '8px', color: '#52c41a', fontWeight: 'bold' } }, `✓ 存在: ${existCount} 个`),
+    h('p', { style: { marginBottom: '8px', color: '#ff4d4f', fontWeight: 'bold' } }, `✗ 不存在: ${notExistCount} 个`)
+  ]);
+}
+
+async function removeCheckedMissingPaths(items) {
+  let removedVars = 0;
+  let removedPathItems = 0;
+
+  const varItems = items.filter(item => item.type === 'variable');
+  const pathItems = items.filter(item => item.type === 'path-item');
+
+  for (const item of varItems) {
+    try {
+      try {
+        await window.services.deleteEnvVar(item.varName, item.scope === 'system');
+      } catch {
+        // 忽略删除失败（可能是禁用状态）
+      }
+      removeDisabledVar(item.scope, item.varName);
+      alternativesStore.removeAllAlternatives(item.scope, item.varName);
+      removedVars++;
+    } catch (error) {
+      console.error(`删除变量 ${item.varName} 失败:`, error);
+    }
+  }
+
+  const groupedPathItems = pathItems.reduce((groups, item) => {
+    const key = `${item.scope}:${item.varName}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        scope: item.scope,
+        varName: item.varName,
+        items: []
+      });
+    }
+    groups.get(key).items.push(item);
+    return groups;
+  }, new Map());
+
+  for (const group of groupedPathItems.values()) {
+    const { scope, varName, items: groupItems } = group;
+    const sourceVars = scope === 'system' ? systemVars.value : userVars.value;
+    const currentVar = sourceVars.find(item => item.name === varName);
+    if (!currentVar) continue;
+
+    const removePaths = new Set(groupItems.map(item => item.rawPath));
+    const currentPaths = getPathItems(currentVar.value);
+    const nextPaths = currentPaths.filter(path => !removePaths.has(path));
+    if (nextPaths.length === currentPaths.length) continue;
+
+    try {
+      await window.services.setEnvVar(currentVar.name, nextPaths.join(';'), scope === 'system');
+      removedPathItems += currentPaths.length - nextPaths.length;
+    } catch (error) {
+      console.error(`清理 Path 变量 ${currentVar.name} 失败:`, error);
+    }
+  }
+
+  if (removedVars > 0 || removedPathItems > 0) {
+    await loadEnvVars();
+    await exportAfterVariableChange();
+    message.success(`已删除 ${removedVars} 个变量、${removedPathItems} 个 Path 路径项`);
+  } else {
+    message.info('未删除任何路径');
+  }
+}
+
+function showGlobalPathCleanupModal(totalPaths, existCount, notExistCount, notExistDetails) {
+  const selectedKeys = ref(notExistDetails.map(item => item.key));
+
+  const GlobalPathCleanupContent = defineComponent({
+    name: 'GlobalPathCleanupContent',
+    setup() {
+      const allSelected = computed(() => selectedKeys.value.length === notExistDetails.length);
+      const indeterminate = computed(() => selectedKeys.value.length > 0 && selectedKeys.value.length < notExistDetails.length);
+
+      function toggleAll(event) {
+        selectedKeys.value = event.target.checked ? notExistDetails.map(item => item.key) : [];
+      }
+
+      function toggleOne(key, checked) {
+        if (checked) {
+          selectedKeys.value = selectedKeys.value.includes(key) ? selectedKeys.value : [...selectedKeys.value, key];
+        } else {
+          selectedKeys.value = selectedKeys.value.filter(item => item !== key);
+        }
+      }
+
+      function renderItemCheckbox(item, content) {
+        return h(Checkbox, {
+          checked: selectedKeys.value.includes(item.key),
+          onChange: event => toggleOne(item.key, event.target.checked)
+        }, () => content);
+      }
+
+      function renderPlainVariableSection(items) {
+        if (items.length === 0) return null;
+
+        return h('div', { style: { marginBottom: '12px' } }, [
+          h('div', { style: { marginBottom: '6px', color: '#666', fontSize: '12px', fontWeight: 'bold' } }, `普通变量 (${items.length})`),
+          ...items.map(item =>
+            h('div', { style: { marginBottom: '8px', paddingLeft: '8px' } }, [
+              renderItemCheckbox(item, h('div', { style: { display: 'inline-flex', flexDirection: 'column', gap: '2px', verticalAlign: 'top' } }, [
+                h('span', { style: { fontSize: '12px', color: '#666' } }, item.varName),
+                h('span', { style: { fontSize: '12px', wordBreak: 'break-all' } }, item.path)
+              ]))
+            ])
+          )
+        ]);
+      }
+
+      function renderPathVariableSection(items) {
+        if (items.length === 0) return null;
+
+        const groupedByVar = items.reduce((groups, item) => {
+          if (!groups.has(item.varName)) groups.set(item.varName, []);
+          groups.get(item.varName).push(item);
+          return groups;
+        }, new Map());
+
+        return h('div', { style: { marginBottom: '12px' } }, [
+          h('div', { style: { marginBottom: '6px', color: '#666', fontSize: '12px', fontWeight: 'bold' } }, `Path 变量 (${items.length})`),
+          ...Array.from(groupedByVar.entries()).map(([varName, varItems]) =>
+            h('div', { style: { marginBottom: '10px', paddingLeft: '8px' } }, [
+              h('div', { style: { marginBottom: '4px', color: '#666', fontSize: '12px' } }, varName),
+              ...varItems.map(item =>
+                h('div', { style: { marginBottom: '6px', paddingLeft: '12px' } }, [
+                  renderItemCheckbox(item, h('span', { style: { fontSize: '12px', wordBreak: 'break-all' } }, item.path))
+                ])
+              )
+            ])
+          )
+        ]);
+      }
+
+      function renderScopeSection(scope) {
+        const scopeItems = notExistDetails.filter(item => item.scope === scope);
+        if (scopeItems.length === 0) return null;
+
+        const plainItems = scopeItems.filter(item => item.type === 'variable');
+        const pathVarItems = scopeItems.filter(item => item.type === 'path-item');
+
+        return h('div', { style: { marginBottom: '14px' } }, [
+          h('div', {
+            style: {
+              marginBottom: '8px',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              background: 'var(--ant-color-fill-quaternary)',
+              fontWeight: 'bold'
+            }
+          }, `${scope === 'system' ? '系统' : '用户'} (${scopeItems.length})`),
+          renderPlainVariableSection(plainItems),
+          renderPathVariableSection(pathVarItems)
+        ]);
+      }
+
+      return () => h('div', {}, [
+        createPathCheckSummary(totalPaths, existCount, notExistCount),
+        h('div', { style: { marginBottom: '8px' } }, [
+          h(Checkbox, {
+            checked: allSelected.value,
+            indeterminate: indeterminate.value,
+            onChange: toggleAll
+          }, () => `全选 (${selectedKeys.value.length}/${notExistDetails.length})`)
+        ]),
+        h('div', { style: { maxHeight: '380px', overflowY: 'auto', border: '1px solid var(--ant-color-border)', borderRadius: '4px', padding: '8px' } },
+          ['system', 'user'].map(renderScopeSection).filter(Boolean)
+        )
+      ]);
+    }
+  });
+
+  Modal.confirm({
+    title: '全局路径检测结果',
+    width: 760,
+    content: h(GlobalPathCleanupContent),
+    okText: '删除选中项',
+    cancelText: '保留',
+    onOk: async () => {
+      const selectedItems = notExistDetails.filter(item => selectedKeys.value.includes(item.key));
+      await removeCheckedMissingPaths(selectedItems);
+    }
+  });
+}
 
 // 全局路径检测
 async function checkAllPaths() {
   pathChecking.value = true;
 
   try {
-    const allVars = [...systemVars.value, ...userVars.value];
+    const allVars = [
+      ...systemVars.value.map(envVar => ({ envVar, scope: 'system' })),
+      ...userVars.value.map(envVar => ({ envVar, scope: 'user' }))
+    ];
     let totalPaths = 0;
     let existCount = 0;
     let notExistCount = 0;
     const notExistDetails = [];
 
-    for (const envVar of allVars) {
+    for (const { envVar, scope } of allVars) {
       const value = envVar.value?.trim();
       if (!value) continue;
-      if (isPathVar(envVar)) continue;
+
+      if (isPathVar(envVar)) {
+        getPathItems(value).forEach((path, index) => {
+          if (!window.services?.isPathLike(path)) return;
+
+          totalPaths++;
+          const exists = window.services.checkPathExists(path);
+          if (exists) {
+            existCount++;
+          } else {
+            notExistCount++;
+            notExistDetails.push({
+              key: `${scope}:${envVar.name}:path:${index}:${path}`,
+              type: 'path-item',
+              scope,
+              varName: envVar.name,
+              path,
+              rawPath: path
+            });
+          }
+        });
+        continue;
+      }
 
       if (window.services?.isPathLike(value)) {
         // 检查是否为目录(不是文件)
@@ -1302,35 +1494,29 @@ async function checkAllPaths() {
         } else {
           notExistCount++;
           notExistDetails.push({
+            key: `${scope}:${envVar.name}:variable`,
+            type: 'variable',
+            scope,
             varName: envVar.name,
-            path: cleanPath
+            path: cleanPath,
+            rawPath: value
           });
         }
       }
     }
 
-    // 显示检测结果
+    if (notExistDetails.length > 0) {
+      showGlobalPathCleanupModal(totalPaths, existCount, notExistCount, notExistDetails);
+      return;
+    }
+
     Modal.info({
       title: '全局路径检测结果',
       width: 700,
       content: h('div', {}, [
-        h('div', { style: { marginBottom: '16px' } }, [
-          h('p', { style: { marginBottom: '8px' } }, `检测到 ${totalPaths} 个路径`),
-          h('p', { style: { marginBottom: '8px', color: '#52c41a', fontWeight: 'bold' } }, `✓ 存在: ${existCount} 个`),
-          h('p', { style: { marginBottom: '8px', color: '#ff4d4f', fontWeight: 'bold' } }, `✗ 不存在: ${notExistCount} 个`)
-        ]),
-        notExistDetails.length > 0 ? h('div', { style: { marginTop: '16px' } }, [
-          h('h4', { style: { marginBottom: '8px' } }, '不存在的路径详情:'),
-          h('div', { style: { maxHeight: '400px', overflowY: 'auto' } },
-            notExistDetails.map(item =>
-              h('div', { style: { marginBottom: '12px', padding: '8px', borderRadius: '4px' } }, [
-                h('div', { style: { fontSize: '12px', color: '#666', marginBottom: '4px' } }, `变量: ${item.varName}`),
-                h('div', { style: { fontSize: '12px', wordBreak: 'break-all' } }, item.path)
-              ])
-            )
-          )
-        ]) : h('div', { style: { marginTop: '16px', padding: '12px', backgroundColor: '#f6ffed', borderRadius: '4px', color: '#52c41a' } },
-          '🎉 所有路径都存在！'
+        createPathCheckSummary(totalPaths, existCount, notExistCount),
+        h('div', { style: { marginTop: '16px', padding: '12px', backgroundColor: '#f6ffed', borderRadius: '4px', color: '#52c41a' } },
+          '所有路径都存在！'
         )
       ])
     });

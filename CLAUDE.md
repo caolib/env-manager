@@ -97,7 +97,7 @@ All registry operations use Windows `reg` command through `execSync`:
 
 ### Theme System (src/App.vue)
 
-- Ant Design Vue integration with ConfigProvider
+- Local theme variables applied through the root `data-theme` attribute
 - Respects system preference via `window.matchMedia('(prefers-color-scheme: dark)')`
 - Synchronizes with `data-theme` attribute on document element
 - User override available in ConfigView
@@ -121,8 +121,8 @@ All registry operations use Windows `reg` command through `execSync`:
 
 ### Modifying the UI
 
-- Components use Ant Design Vue components (imported from `ant-design-vue`)
-- Icons from `@ant-design/icons-vue`
+- UI controls are provided by local Vue components registered from `src/ui`
+- Icons currently come from `@ant-design/icons-vue`
 - Responsive design already in place for collapsible panels
 - Search/filter logic in HomeView.vue uses `filteredSystemVars` and `filteredUserVars` computed properties
 

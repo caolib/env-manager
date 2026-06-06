@@ -1,11 +1,11 @@
 import { createApp } from "vue";
 import "./main.css";
+import "./ui/ui.css";
 
-import Antd from 'ant-design-vue';
 import App from './App.vue';
-import 'ant-design-vue/dist/reset.css';
+import { installLocalUi } from './ui';
 
 const app = createApp(App);
 
-app.use(Antd)
+app.use(installLocalUi)
     .mount('#app');

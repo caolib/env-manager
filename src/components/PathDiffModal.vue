@@ -2,12 +2,12 @@
   <div class="diff-view">
     <!-- 控制按钮 -->
     <div class="control-bar">
-      <Button :type="showUnchanged ? 'primary' : 'default'" size="small" @click="showUnchanged = !showUnchanged">
+      <a-button :type="showUnchanged ? 'primary' : 'default'" size="small" @click="showUnchanged = !showUnchanged">
         {{ showUnchanged ? '✓ 显示未改变' : '× 隐藏未改变' }}
-      </Button>
+      </a-button>
     </div>
 
-    <Table :columns="columns" :data-source="tableData" :pagination="false" size="small" :scroll="{ x: 600, y: 500 }"
+    <a-table :columns="columns" :data-source="tableData" :pagination="false" size="small" :scroll="{ x: 600, y: 500 }"
       :bordered="true">
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'status'">
@@ -29,11 +29,11 @@
           <span v-else>{{ record.path }}</span>
         </template>
       </template>
-    </Table>
+    </a-table>
 
     <!-- 统计信息 -->
     <div class="stats-info" v-if="statistics.added > 0 || statistics.removed > 0">
-      <Divider style="margin: 12px 0;" />
+      <a-divider style="margin: 12px 0;" />
       <div class="stats-row">
         <span v-if="statistics.added > 0" style="color: #52c41a; margin-right: 16px;">
           ✓ 新增 {{ statistics.added }} 项
@@ -49,7 +49,6 @@
 
 <script setup>
 import { computed, ref } from 'vue';
-import { Table, Divider, Button } from 'ant-design-vue';
 
 const props = defineProps({
   oldPaths: {

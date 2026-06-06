@@ -2,7 +2,13 @@
   <div class="path-var-table" :class="{ 'disabled-var': props.disabled || props.envVar.disabled }">
     <div class="path-var-toolbar">
       <div class="path-var-title">
-        <span class="path-var-name" @click="copyName" title="点击复制变量名">{{ props.envVar.name }}</span>
+        <span class="path-var-name" @click="copyName" title="点击复制变量名">
+          <template v-for="(part, index) in getHighlightParts(props.envVar.name, props.highlight)"
+            :key="`name-${index}`">
+            <mark v-if="part.match" class="search-highlight">{{ part.text }}</mark>
+            <template v-else>{{ part.text }}</template>
+          </template>
+        </span>
         <a-tag v-if="props.disabled || props.envVar.disabled" color="default">禁用</a-tag>
         <a-tag>{{ editList.length }} 项</a-tag>
       </div>
@@ -29,7 +35,17 @@
       :row-key="record => record.key" :scroll="{ x: 680, y: 420 }" bordered>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'path'">
-          <a-input v-model:value="editList[record.index]" size="small" placeholder="输入路径..." />
+          <div class="path-input-highlight-wrap">
+            <a-input v-model:value="editList[record.index]" size="small" placeholder="输入路径..."
+              @focus="focusedIndex = record.index" @blur="focusedIndex = null" />
+            <div v-if="shouldShowPathHighlight(record)" class="path-highlight-overlay">
+              <template v-for="(part, index) in getHighlightParts(editList[record.index], props.highlight)"
+                :key="`path-${record.index}-${index}`">
+                <mark v-if="part.match" class="search-highlight">{{ part.text }}</mark>
+                <template v-else>{{ part.text }}</template>
+              </template>
+            </div>
+          </div>
         </template>
 
         <template v-else-if="column.key === 'actions'">
@@ -62,7 +78,7 @@
 
 <script setup>
 import { computed, defineComponent, h, ref, watch } from 'vue';
-import { Checkbox, message, Modal } from 'ant-design-vue';
+import { Checkbox, message, Modal } from '../ui';
 import { DeleteOutlined, FolderOpenOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import PathDiffModal from './PathDiffModal.vue';
 
@@ -74,6 +90,10 @@ const props = defineProps({
   disabled: {
     type: Boolean,
     default: false
+  },
+  highlight: {
+    type: String,
+    default: ''
   }
 });
 
@@ -83,6 +103,7 @@ const DELETE_CONFIRM_TEXT = 'delete path';
 const editList = ref([]);
 const deleteConfirmOpen = ref(false);
 const deleteConfirmText = ref('');
+const focusedIndex = ref(null);
 
 const pathList = computed(() => {
   const value = props.envVar.value || '';
@@ -113,6 +134,40 @@ const columns = [
     align: 'right'
   }
 ];
+
+function getHighlightParts(value, keyword) {
+  const source = String(value || '');
+  const search = String(keyword || '');
+  if (!search) return [{ text: source, match: false }];
+
+  const sourceLower = source.toLowerCase();
+  const keywordLower = search.toLowerCase();
+  const parts = [];
+  let from = 0;
+  let index = sourceLower.indexOf(keywordLower, from);
+
+  while (index !== -1) {
+    if (index > from) {
+      parts.push({ text: source.slice(from, index), match: false });
+    }
+    parts.push({ text: source.slice(index, index + search.length), match: true });
+    from = index + search.length;
+    index = sourceLower.indexOf(keywordLower, from);
+  }
+
+  if (from < source.length) {
+    parts.push({ text: source.slice(from), match: false });
+  }
+
+  return parts;
+}
+
+function shouldShowPathHighlight(record) {
+  const value = editList.value[record.index] || '';
+  return focusedIndex.value !== record.index
+    && props.highlight
+    && value.toLowerCase().includes(props.highlight.toLowerCase());
+}
 
 watch(() => props.envVar.value, () => {
   editList.value = [...pathList.value];
@@ -357,6 +412,30 @@ function checkEditPaths() {
 
 .delete-confirm-text {
   margin-bottom: 8px;
+}
+
+.path-input-highlight-wrap {
+  position: relative;
+}
+
+.path-highlight-overlay {
+  position: absolute;
+  inset: 1px 28px 1px 8px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  color: transparent;
+  font-size: 14px;
+  line-height: 30px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.path-highlight-overlay :deep(.search-highlight),
+.path-var-name :deep(.search-highlight) {
+  background-color: yellow !important;
+  color: red !important;
+  padding: 0;
 }
 
 :deep(.ant-table-cell) {

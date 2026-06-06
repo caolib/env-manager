@@ -106,7 +106,7 @@
 <script setup>
 import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined, EyeOutlined, EyeInvisibleOutlined, FolderOpenOutlined, LinkOutlined } from '@ant-design/icons-vue';
 import { computed, defineComponent, h, ref, watch, provide, inject } from 'vue';
-import { Checkbox, message, Modal } from 'ant-design-vue';
+import { Checkbox, message, Modal } from '../ui';
 import PathDiffModal from './PathDiffModal.vue';
 
 // 工具函数：HTML 转义

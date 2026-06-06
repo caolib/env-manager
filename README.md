@@ -77,7 +77,7 @@ pnpm build
 ## 技术栈
 
 - **框架**：Vue 3 + Composition API
-- **UI 库**：Ant Design Vue
+- **UI 层**：项目内本地 Vue 组件（不依赖外部组件库）
 - **构建工具**：Vite
 - **运行环境**：uTools + Node.js preload
 - **状态管理**：Pinia（使用 uTools dbStorage）

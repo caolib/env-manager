@@ -201,6 +201,220 @@ function isCurrentProcessAdmin() {
   return _isAdminCached
 }
 
+function validateExportFolder(exportFolder) {
+  if (!exportFolder) {
+    return { valid: false, message: '请先设置默认导出文件夹' }
+  }
+  if (!fs.existsSync(exportFolder)) {
+    return { valid: false, message: '默认导出文件夹不存在' }
+  }
+
+  const stat = fs.statSync(exportFolder)
+  if (!stat.isDirectory()) {
+    return { valid: false, message: '默认导出路径不是文件夹' }
+  }
+
+  return { valid: true }
+}
+
+function writeJsonFile(filePath, data) {
+  const jsonStr = JSON.stringify(data, null, 2)
+  fs.writeFileSync(filePath, jsonStr, { encoding: 'utf-8' })
+}
+
+function listRollingExportFiles(exportFolder, filePrefix) {
+  return fs.readdirSync(exportFolder)
+    .filter(function (fileName) {
+      return fileName.startsWith(filePrefix) && fileName.toLowerCase().endsWith('.json')
+    })
+    .map(function (fileName) {
+      const filePath = path.join(exportFolder, fileName)
+      try {
+        const stat = fs.statSync(filePath)
+        if (!stat.isFile()) return null
+        return {
+          name: fileName,
+          path: filePath,
+          mtimeMs: stat.mtimeMs
+        }
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean)
+    .sort(function (a, b) {
+      if (a.mtimeMs !== b.mtimeMs) return a.mtimeMs - b.mtimeMs
+      return a.name.localeCompare(b.name)
+    })
+}
+
+function listConfigBackupFiles(exportFolder) {
+  return fs.readdirSync(exportFolder)
+    .filter(function (fileName) {
+      return fileName.toLowerCase().endsWith('.json')
+    })
+    .map(function (fileName) {
+      const filePath = path.join(exportFolder, fileName)
+      try {
+        const stat = fs.statSync(filePath)
+        if (!stat.isFile()) return null
+        const data = readConfigBackupFile(filePath)
+        return {
+          name: fileName,
+          path: filePath,
+          mtimeMs: stat.mtimeMs,
+          exportTimeMs: getConfigExportTimeMs(data)
+        }
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean)
+}
+
+function cleanupConfigBackupFiles(exportFolder, maxFiles) {
+  if (maxFiles === undefined || maxFiles === null || maxFiles === '') return []
+
+  const normalizedMaxFiles = Math.max(1, Math.floor(Number(maxFiles) || 1))
+  const files = listConfigBackupFiles(exportFolder).sort(compareBackupFilesNewestFirst)
+  const removedFiles = files.slice(normalizedMaxFiles)
+
+  removedFiles.forEach(function (file) {
+    moveFileToRecycleBin(file.path)
+  })
+
+  return removedFiles.map(function (file) { return file.path })
+}
+
+function sortObjectKeys(value) {
+  if (Array.isArray(value)) {
+    return value.map(sortObjectKeys)
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce(function (result, key) {
+      result[key] = sortObjectKeys(value[key])
+      return result
+    }, {})
+  }
+
+  return value
+}
+
+function normalizeStartupConfigForCompare(config) {
+  const clone = JSON.parse(JSON.stringify(config || {}))
+  if (clone && typeof clone === 'object' && !Array.isArray(clone)) {
+    delete clone.exportTime
+  }
+  return sortObjectKeys(clone)
+}
+
+function isSameStartupConfig(left, right) {
+  return JSON.stringify(normalizeStartupConfigForCompare(left)) === JSON.stringify(normalizeStartupConfigForCompare(right))
+}
+
+function getConfigCompareKey(config) {
+  return JSON.stringify(normalizeStartupConfigForCompare(config))
+}
+
+function getConfigExportTimeMs(config) {
+  const time = new Date(config && config.exportTime ? config.exportTime : 0).getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
+function compareBackupFilesNewestFirst(a, b) {
+  if (a.exportTimeMs !== b.exportTimeMs) return b.exportTimeMs - a.exportTimeMs
+  if (a.mtimeMs !== b.mtimeMs) return b.mtimeMs - a.mtimeMs
+  return b.name.localeCompare(a.name)
+}
+
+function readLatestStartupConfig(exportFolder, filePrefix) {
+  const files = listRollingExportFiles(exportFolder, filePrefix)
+
+  for (let index = files.length - 1; index >= 0; index--) {
+    try {
+      const content = fs.readFileSync(files[index].path, { encoding: 'utf-8' })
+      return {
+        file: files[index],
+        data: JSON.parse(content)
+      }
+    } catch {
+      // 忽略损坏或不可读的历史备份，继续找更早的文件
+    }
+  }
+
+  return null
+}
+
+function isConfigBackupData(data) {
+  const envVars = data && typeof data === 'object' ? data.env_vars : null
+  if (!envVars || typeof envVars !== 'object') return false
+  return Array.isArray(envVars.system_vars) || Array.isArray(envVars.user_vars)
+}
+
+function isPathInFolder(filePath, folderPath) {
+  const resolvedFile = path.resolve(filePath)
+  const resolvedFolder = path.resolve(folderPath)
+  const relativePath = path.relative(resolvedFolder, resolvedFile)
+  return !!relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
+}
+
+function readConfigBackupFile(filePath) {
+  const content = fs.readFileSync(filePath, { encoding: 'utf-8' })
+  const data = JSON.parse(content)
+  if (!isConfigBackupData(data)) {
+    throw new Error('不是有效的配置备份文件')
+  }
+  return data
+}
+
+function isPathLikeExportItem(value) {
+  const text = String(value || '')
+  return /^[a-zA-Z]:[\\/]/.test(text)
+    || /^\\\\/.test(text)
+    || /%[^%]+%/.test(text)
+    || text.includes('\\')
+    || text.includes('/')
+}
+
+function countPathItems(vars) {
+  return (Array.isArray(vars) ? vars : []).reduce(function (count, item) {
+    const name = String(item && item.name ? item.name : '').toLowerCase()
+    const value = String(item && item.value ? item.value : '')
+    const parts = value.split(';').map(function (pathItem) {
+      return pathItem.trim()
+    }).filter(Boolean)
+
+    if (parts.length <= 1) return count
+    if (name === 'path') return count + parts.length
+    if (name.includes('path') && parts.some(isPathLikeExportItem)) return count + parts.length
+    return count
+  }, 0)
+}
+
+function moveFileToRecycleBin(filePath) {
+  const resolvedPath = path.resolve(filePath)
+  if (!fs.existsSync(resolvedPath)) return
+
+  const escapedPath = resolvedPath.replace(/'/g, "''")
+  const script = `
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName Microsoft.VisualBasic
+$target = '${escapedPath}'
+[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(
+  $target,
+  [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+  [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+)
+`
+
+  execFileSync(getPowerShellPath(), ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf-8',
+    windowsHide: true,
+    maxBuffer: 1024 * 1024 * 10
+  })
+}
+
 // 通过 window 对象向渲染进程注入 nodejs 能力
 window.services = {
   // 读文件
@@ -423,10 +637,20 @@ window.services = {
   /**
    * 导出JSON配置文件
    */
-  exportConfig: function (configData, defaultFileName) {
+  exportConfig: function (configData, defaultFileName, exportFolder, maxFiles) {
     if (!defaultFileName) defaultFileName = 'config.json'
 
     try {
+      if (exportFolder) {
+        const folderCheck = validateExportFolder(exportFolder)
+        if (!folderCheck.valid) return { success: false, message: folderCheck.message }
+
+        const filePath = path.join(exportFolder, defaultFileName)
+        writeJsonFile(filePath, configData)
+        const removedFiles = cleanupConfigBackupFiles(exportFolder, maxFiles)
+        return { success: true, path: filePath, removedFiles: removedFiles }
+      }
+
       const savePath = window.utools.showSaveDialog({
         title: '保存配置文件',
         defaultPath: path.join(window.utools.getPath('documents'), defaultFileName),
@@ -438,11 +662,211 @@ window.services = {
       })
 
       if (savePath) {
-        const jsonStr = JSON.stringify(configData, null, 2)
-        fs.writeFileSync(savePath, jsonStr, { encoding: 'utf-8' })
+        writeJsonFile(savePath, configData)
         return { success: true, path: savePath }
       }
       return { success: false, message: '用户取消保存' }
+    } catch (error) {
+      return { success: false, message: error.message }
+    }
+  },
+
+  /**
+   * 启动时滚动导出配置文件
+   */
+  exportStartupConfig: function (configData, fileName, exportFolder, maxFiles) {
+    const filePrefix = 'env-manager-startup-'
+    if (!fileName) fileName = filePrefix + Date.now() + '.json'
+
+    try {
+      const folderCheck = validateExportFolder(exportFolder)
+      if (!folderCheck.valid) return { success: false, message: folderCheck.message }
+
+      const latest = readLatestStartupConfig(exportFolder, filePrefix)
+      if (latest && isSameStartupConfig(latest.data, configData)) {
+        const removedFiles = cleanupConfigBackupFiles(exportFolder, maxFiles)
+        return { success: true, skipped: true, reason: '配置未变化', path: latest.file.path, removedFiles: removedFiles }
+      }
+
+      const filePath = path.join(exportFolder, fileName)
+      writeJsonFile(filePath, configData)
+      const removedFiles = cleanupConfigBackupFiles(exportFolder, maxFiles)
+      return { success: true, path: filePath, removedFiles: removedFiles }
+    } catch (error) {
+      return { success: false, message: error.message }
+    }
+  },
+
+  /**
+   * 列出默认导出目录中的配置备份文件
+   */
+  listExportConfigFiles: function (exportFolder) {
+    try {
+      const folderCheck = validateExportFolder(exportFolder)
+      if (!folderCheck.valid) return { success: false, message: folderCheck.message }
+
+      const files = fs.readdirSync(exportFolder)
+        .filter(function (fileName) {
+          return fileName.toLowerCase().endsWith('.json')
+        })
+        .map(function (fileName) {
+          const filePath = path.join(exportFolder, fileName)
+          try {
+            const stat = fs.statSync(filePath)
+            if (!stat.isFile()) return null
+
+            const data = readConfigBackupFile(filePath)
+            const systemVars = data.env_vars?.system_vars || []
+            const userVars = data.env_vars?.user_vars || []
+            const systemPathItemCount = countPathItems(systemVars)
+            const userPathItemCount = countPathItems(userVars)
+            return {
+              name: fileName,
+              path: filePath,
+              size: stat.size,
+              mtimeMs: stat.mtimeMs,
+              exportTime: data.exportTime || '',
+              systemVarCount: systemVars.length,
+              userVarCount: userVars.length,
+              systemPathItemCount: systemPathItemCount,
+              userPathItemCount: userPathItemCount,
+              pathItemCount: systemPathItemCount + userPathItemCount
+            }
+          } catch {
+            return null
+          }
+        })
+        .filter(Boolean)
+        .sort(function (a, b) {
+          if (a.mtimeMs !== b.mtimeMs) return b.mtimeMs - a.mtimeMs
+          return a.name.localeCompare(b.name)
+        })
+
+      return { success: true, files: files }
+    } catch (error) {
+      return { success: false, message: error.message }
+    }
+  },
+
+  /**
+   * 清理默认导出目录中配置内容完全相同的重复备份文件
+   */
+  cleanupDuplicateConfigFiles: function (exportFolder, currentConfig) {
+    try {
+      const folderCheck = validateExportFolder(exportFolder)
+      if (!folderCheck.valid) return { success: false, message: folderCheck.message }
+
+      const currentConfigKey = currentConfig ? getConfigCompareKey(currentConfig) : ''
+      const files = fs.readdirSync(exportFolder)
+        .filter(function (fileName) {
+          return fileName.toLowerCase().endsWith('.json')
+        })
+        .map(function (fileName) {
+          const filePath = path.join(exportFolder, fileName)
+          try {
+            const stat = fs.statSync(filePath)
+            if (!stat.isFile()) return null
+
+            const data = readConfigBackupFile(filePath)
+            const configKey = getConfigCompareKey(data)
+            return {
+              name: fileName,
+              path: filePath,
+              mtimeMs: stat.mtimeMs,
+              exportTimeMs: getConfigExportTimeMs(data),
+              configKey: configKey,
+              matchesCurrent: !!currentConfigKey && configKey === currentConfigKey
+            }
+          } catch {
+            return null
+          }
+        })
+        .filter(Boolean)
+
+      const groups = files.reduce(function (result, file) {
+        if (!result.has(file.configKey)) result.set(file.configKey, [])
+        result.get(file.configKey).push(file)
+        return result
+      }, new Map())
+
+      const removedFiles = []
+      let duplicateGroupCount = 0
+      let currentMatchCount = 0
+      let currentMatchRemovedCount = 0
+
+      groups.forEach(function (group) {
+        group.sort(compareBackupFilesNewestFirst)
+        if (group[0] && group[0].matchesCurrent) currentMatchCount = group.length
+        if (group.length <= 1) return
+
+        duplicateGroupCount += 1
+        group.slice(1).forEach(function (file) {
+          moveFileToRecycleBin(file.path)
+          removedFiles.push({
+            name: file.name,
+            path: file.path,
+            matchesCurrent: file.matchesCurrent
+          })
+          if (file.matchesCurrent) currentMatchRemovedCount += 1
+        })
+      })
+
+      return {
+        success: true,
+        removedCount: removedFiles.length,
+        removedFiles: removedFiles,
+        duplicateGroupCount: duplicateGroupCount,
+        currentMatchCount: currentMatchCount,
+        currentMatchRemovedCount: currentMatchRemovedCount
+      }
+    } catch (error) {
+      return { success: false, message: error.message }
+    }
+  },
+
+  /**
+   * 读取默认导出目录中的配置备份文件
+   */
+  readExportConfigFile: function (filePath, exportFolder) {
+    try {
+      const folderCheck = validateExportFolder(exportFolder)
+      if (!folderCheck.valid) return { success: false, message: folderCheck.message }
+      if (!filePath || !isPathInFolder(filePath, exportFolder)) {
+        return { success: false, message: '配置文件不在默认导出文件夹内' }
+      }
+      if (!filePath.toLowerCase().endsWith('.json')) {
+        return { success: false, message: '只支持读取 JSON 配置文件' }
+      }
+
+      const stat = fs.statSync(filePath)
+      if (!stat.isFile()) return { success: false, message: '配置文件不存在' }
+
+      return {
+        success: true,
+        path: filePath,
+        data: readConfigBackupFile(filePath)
+      }
+    } catch (error) {
+      return { success: false, message: error.message }
+    }
+  },
+
+  /**
+   * 选择默认导出文件夹
+   */
+  selectExportFolder: function (defaultPath) {
+    try {
+      const openPath = window.utools.showOpenDialog({
+        title: '选择默认导出文件夹',
+        defaultPath: defaultPath || window.utools.getPath('documents'),
+        buttonLabel: '选择',
+        properties: ['openDirectory', 'createDirectory']
+      })
+
+      if (openPath && openPath.length > 0) {
+        return { success: true, path: openPath[0] }
+      }
+      return { success: false, message: '用户取消选择' }
     } catch (error) {
       return { success: false, message: error.message }
     }
