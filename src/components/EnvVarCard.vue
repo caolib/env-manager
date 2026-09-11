@@ -2,7 +2,7 @@
     <a-card size="small" class="env-var-card" :class="{
         'path-card': isSemicolonSeparatedValue,
         'disabled-card': props.disabled || props.envVar.disabled
-    }">
+    }" @contextmenu="openContextMenu">
         <template #title>
             <div class="card-header">
                 <span class="var-name clickable" :class="{ 'disabled-text': props.disabled || props.envVar.disabled }"
@@ -12,31 +12,6 @@
                 <a-tag v-if="props.disabled || props.envVar.disabled" color="default" style="margin-left: 8px;">
                     禁用
                 </a-tag>
-                <div class="card-actions">
-                    <a-button v-if="isSensitiveField" size="small" type="link" @click="showFullValue = !showFullValue"
-                        :title="showFullValue ? '隐藏值' : '显示完整值'">
-                        <EyeOutlined v-if="showFullValue" />
-                        <EyeInvisibleOutlined v-else />
-                    </a-button>
-                    <a-button v-if="isValidPath" size="small" type="link" @click="openPath" title="打开文件/文件夹">
-                        <FolderOpenOutlined />
-                    </a-button>
-                    <a-button v-if="isValidURL" size="small" type="link" @click="openURL" title="在浏览器中打开">
-                        <LinkOutlined />
-                    </a-button>
-                    <a-button size="small" type="link" @click="copyAll" title="复制 KEY=VALUE">
-                        <CopyOutlined />
-                    </a-button>
-                    <a-button size="small" type="link" @click="handleEditClick">
-                        <EditOutlined />
-                    </a-button>
-                    <a-popconfirm title="确定要删除该变量吗？" ok-text="确定" cancel-text="取消"
-                        @confirm="$emit('delete', envVar)">
-                        <a-button size="small" type="link" danger>
-                            <DeleteOutlined />
-                        </a-button>
-                    </a-popconfirm>
-                </div>
             </div>
         </template>
 
@@ -100,11 +75,26 @@
             </template>
         </div>
     </a-card>
+
+    <Teleport to="body">
+        <div v-if="contextMenu.visible" ref="contextMenuRef" class="env-card-context-menu"
+            :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }" @click.stop @contextmenu.prevent>
+            <button v-for="item in contextMenuItems" :key="item.action" type="button" class="context-menu-item"
+                :class="{ danger: item.danger }" @click="runContextMenuAction(item.action)">
+                <component :is="item.icon" class="context-menu-icon" />
+                <span>{{ item.label }}</span>
+            </button>
+        </div>
+    </Teleport>
 </template>
+
+<script>
+let activeContextMenuCloser = null;
+</script>
 
 <script setup>
 import { EditOutlined, DeleteOutlined, PlusOutlined, CopyOutlined, EyeOutlined, EyeInvisibleOutlined, FolderOpenOutlined, LinkOutlined } from '@ant-design/icons-vue';
-import { computed, defineComponent, h, ref, watch, provide, inject } from 'vue';
+import { computed, defineComponent, h, ref, watch, provide, inject, nextTick, onBeforeUnmount } from 'vue';
 import { Checkbox, message, Modal } from '../ui';
 import PathDiffModal from './PathDiffModal.vue';
 import HighlightText from './HighlightText.vue';
@@ -163,6 +153,12 @@ const isDirty = ref(false);
 
 // 敏感信息相关
 const showFullValue = ref(false);
+const contextMenuRef = ref(null);
+const contextMenu = ref({
+    visible: false,
+    x: 0,
+    y: 0
+});
 
 // 检查变量是否为敏感字段
 const isSensitiveField = computed(() => {
@@ -214,6 +210,149 @@ const isValidURL = computed(() => {
 
     // 检查是否为有效的 URL
     return window.services?.isURL(value);
+});
+
+const contextMenuItems = computed(() => {
+    const items = [];
+
+    if (isSensitiveField.value) {
+        items.push({
+            action: 'toggleSensitive',
+            label: showFullValue.value ? '隐藏完整值' : '显示完整值',
+            icon: showFullValue.value ? EyeInvisibleOutlined : EyeOutlined
+        });
+    }
+
+    if (isValidPath.value) {
+        items.push({
+            action: 'openPath',
+            label: '打开',
+            icon: FolderOpenOutlined
+        });
+    }
+
+    if (isValidURL.value) {
+        items.push({
+            action: 'openURL',
+            label: '在浏览器中打开',
+            icon: LinkOutlined
+        });
+    }
+
+    items.push(
+        {
+            action: 'copyAll',
+            label: '复制',
+            icon: CopyOutlined
+        },
+        {
+            action: 'edit',
+            label: '编辑',
+            icon: EditOutlined
+        }
+    );
+
+    if (!isSemicolonSeparatedValue.value) {
+        items.push({
+            action: 'delete',
+            label: '删除',
+            icon: DeleteOutlined,
+            danger: true
+        });
+    }
+
+    return items;
+});
+
+function isNativeContextMenuTarget(target) {
+    return typeof target?.closest === 'function'
+        && !!target.closest('input, textarea, [contenteditable="true"]');
+}
+
+function openContextMenu(event) {
+    if (isNativeContextMenuTarget(event.target)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (activeContextMenuCloser && activeContextMenuCloser !== hideContextMenu) {
+        activeContextMenuCloser();
+    }
+
+    contextMenu.value = {
+        visible: true,
+        x: event.clientX,
+        y: event.clientY
+    };
+    activeContextMenuCloser = hideContextMenu;
+
+    nextTick(() => {
+        placeContextMenu(event.clientX, event.clientY);
+        bindContextMenuListeners();
+    });
+}
+
+function placeContextMenu(clientX, clientY) {
+    const margin = 8;
+    const menu = contextMenuRef.value;
+    const width = menu?.offsetWidth || 180;
+    const height = menu?.offsetHeight || 240;
+    const maxX = Math.max(margin, window.innerWidth - width - margin);
+    const maxY = Math.max(margin, window.innerHeight - height - margin);
+
+    contextMenu.value.x = Math.min(Math.max(clientX, margin), maxX);
+    contextMenu.value.y = Math.min(Math.max(clientY, margin), maxY);
+}
+
+function hideContextMenu() {
+    contextMenu.value.visible = false;
+    if (activeContextMenuCloser === hideContextMenu) {
+        activeContextMenuCloser = null;
+    }
+    unbindContextMenuListeners();
+}
+
+function handleContextMenuKeydown(event) {
+    if (event.key === 'Escape') {
+        hideContextMenu();
+    }
+}
+
+function bindContextMenuListeners() {
+    unbindContextMenuListeners();
+    window.document.addEventListener('click', hideContextMenu);
+    window.document.addEventListener('keydown', handleContextMenuKeydown);
+    window.addEventListener('resize', hideContextMenu);
+    window.addEventListener('scroll', hideContextMenu, true);
+}
+
+function unbindContextMenuListeners() {
+    window.document.removeEventListener('click', hideContextMenu);
+    window.document.removeEventListener('keydown', handleContextMenuKeydown);
+    window.removeEventListener('resize', hideContextMenu);
+    window.removeEventListener('scroll', hideContextMenu, true);
+}
+
+function runContextMenuAction(action) {
+    hideContextMenu();
+
+    if (action === 'toggleSensitive') {
+        showFullValue.value = !showFullValue.value;
+    } else if (action === 'openPath') {
+        openPath();
+    } else if (action === 'openURL') {
+        openURL();
+    } else if (action === 'copyAll') {
+        copyAll();
+    } else if (action === 'edit') {
+        handleEditClick();
+    } else if (action === 'delete') {
+        emit('delete', props.envVar);
+    }
+}
+
+onBeforeUnmount(() => {
+    hideContextMenu();
 });
 
 // 处理编辑按钮点击
@@ -488,7 +627,16 @@ function checkEditPaths() {
 .env-var-card {
     width: fit-content;
     height: fit-content;
-    border: 2px solid var(--blue);
+    border: 1px solid var(--ui-border);
+    background: var(--ui-raised-surface);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.12);
+    transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.env-var-card:hover {
+    border-color: var(--ui-border-strong);
+    background: var(--ui-raised-surface-hover);
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.26), 0 4px 12px rgba(0, 0, 0, 0.14);
 }
 
 :deep(.ant-card-head) {
@@ -526,18 +674,6 @@ function checkEditPaths() {
 
 .clickable:active {
     opacity: 0.5;
-}
-
-.card-actions {
-    display: flex;
-    background-color: rgba(0, 0, 0, 0.03);
-    border-radius: 4px;
-    opacity: 0;
-    transition: opacity 0.3s ease-in-out;
-}
-
-.env-var-card:hover .card-actions {
-    opacity: 1;
 }
 
 .var-value {
@@ -631,7 +767,7 @@ function checkEditPaths() {
 .disabled-card {
     opacity: 0.6;
     border-color: var(--ant-color-border-secondary);
-    background-color: var(--ant-color-fill-quaternary);
+    background: var(--ui-raised-surface-hover);
 }
 
 .disabled-card :deep(.ant-card-head) {
@@ -645,6 +781,48 @@ function checkEditPaths() {
 
 .disabled-card .var-value {
     color: var(--ant-color-text-tertiary);
+}
+
+.env-card-context-menu {
+    position: fixed;
+    z-index: 3000;
+    min-width: 180px;
+    padding: 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-floating-surface);
+    color: var(--ui-text);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34), 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.context-menu-item:hover {
+    background: var(--ui-surface-muted);
+}
+
+.context-menu-item.danger {
+    color: var(--ui-danger);
+}
+
+.context-menu-icon {
+    flex: 0 0 auto;
+    font-size: 14px;
 }
 
 </style>

@@ -3,6 +3,9 @@
   --ui-bg: #f7f8fa;
   --ui-surface: #ffffff;
   --ui-surface-muted: #f4f6f8;
+  --ui-raised-surface: #eef2f6;
+  --ui-raised-surface-hover: #e8edf3;
+  --ui-floating-surface: #eef2f6;
   --ui-border: #d8dee6;
   --ui-border-strong: #b8c1cc;
   --ui-text: #1f2328;
@@ -35,6 +38,9 @@
   --ui-bg: #202124;
   --ui-surface: #303133;
   --ui-surface-muted: #26282c;
+  --ui-raised-surface: #1b1c1f;
+  --ui-raised-surface-hover: #17191c;
+  --ui-floating-surface: #1b1c1f;
   --ui-border: #45484f;
   --ui-border-strong: #60646d;
   --ui-text: #e6e6e6;
