@@ -453,6 +453,10 @@
 
 .ui-switch {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   min-width: 44px;
   height: 24px;
   padding: 0 8px 0 24px;
@@ -460,6 +464,8 @@
   border-radius: 999px;
   background: var(--ui-border-strong);
   color: #fff;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .ui-switch::before {
@@ -480,7 +486,11 @@
 }
 
 .ui-switch-checked::before {
-  transform: translateX(20px);
+  left: calc(100% - 21px);
+}
+
+.ui-switch-label {
+  white-space: nowrap;
 }
 
 .ui-radio-group {
