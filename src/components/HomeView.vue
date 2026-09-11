@@ -386,6 +386,7 @@ import { useSettingsStore } from '../stores/settings';
 import { useAlternativesStore } from '../stores/alternatives';
 import { getData, setData } from '../utils/store';
 import { exportBackupFile, exportAfterVariableChange } from '../utils/configBackup';
+import { isSemicolonSeparatedValue, isSemicolonSeparatedVar } from '../utils/pathVar';
 
 const props = defineProps({
   enterAction: {
@@ -496,7 +497,7 @@ function ensureAlternativeExists(scope, name, value, note = '') {
   const varName = (name || '').trim();
   const v = (value ?? '').toString();
   if (!varName || !v) return;
-  if (isPathVarValue(v)) return;
+  if (isPathVarValue(varName, v)) return;
 
   alternativesStore.addAlternative(scope, varName, v, note);
 }
@@ -539,16 +540,14 @@ const editingNoteIndex = ref(-1);
 const editingNoteValue = ref('');
 
 // 判断是否为 path 变量（分号分隔的多路径）
-function isPathVarValue(value) {
-  const v = (value ?? '').toString().trim();
-  if (!v) return false;
-  return v.includes(';') && v.split(';').filter(Boolean).length > 1;
+function isPathVarValue(name, value) {
+  return isSemicolonSeparatedVar(name, value);
 }
 
 const showAlternativesSection = computed(() => {
   // 仅对普通变量显示；Path 变量不显示
   // 普通变量始终显示输入区域
-  if (!formData.value.name?.trim() || isPathVarValue(formData.value.value)) {
+  if (!formData.value.name?.trim() || isPathVarValue(formData.value.name, formData.value.value)) {
     return false;
   }
   return true;
@@ -588,13 +587,13 @@ const displayAlternatives = computed(() => {
 });
 
 const canAddAlternative = computed(() => {
-  return !!formData.value.name?.trim() && !!altValueInput.value.trim() && !isPathVarValue(formData.value.value);
+  return !!formData.value.name?.trim() && !!altValueInput.value.trim() && !isPathVarValue(formData.value.name, formData.value.value);
 });
 
 function addAlternative() {
   const name = formData.value.name?.trim();
   if (!name) return;
-  if (isPathVarValue(formData.value.value)) return;
+  if (isPathVarValue(formData.value.name, formData.value.value)) return;
 
   const value = altValueInput.value.trim();
   const note = altNoteInput.value.trim();
@@ -834,7 +833,7 @@ function isValidPath(value) {
   const trimmed = value.trim();
 
   // 排除分号分隔的值（PATH变量）
-  if (trimmed.includes(';') && trimmed.split(';').filter(Boolean).length > 1) {
+  if (isSemicolonSeparatedValue(trimmed)) {
     return false;
   }
 
@@ -851,7 +850,7 @@ function isValidURL(value) {
   const trimmed = value.trim();
 
   // 排除分号分隔的值
-  if (trimmed.includes(';') && trimmed.split(';').filter(Boolean).length > 1) {
+  if (isSemicolonSeparatedValue(trimmed)) {
     return false;
   }
 
@@ -956,9 +955,7 @@ function filterAndSortVars(vars) {
 
 // 判断是否为 path 变量（分号分隔的多路径）
 function isPathVar(envVar) {
-  const value = envVar.value?.trim();
-  if (!value) return false;
-  return value.includes(';') && value.split(';').filter(Boolean).length > 1;
+  return isSemicolonSeparatedVar(envVar.name, envVar.value);
 }
 
 
@@ -1089,7 +1086,7 @@ function showAddUserDialog() {
 // 编辑变量
 function editVar(row, scope) {
   // 如果是 PATH 变量（分号分隔的值）且当前在表格模式，切换到卡片模式
-  if (settingsStore.layoutMode.value === 'table' && isPathVarValue(row.value)) {
+  if (settingsStore.layoutMode.value === 'table' && isPathVarValue(row.name, row.value)) {
     settingsStore.setLayoutMode('card');
     message.info('PATH 变量已切换到卡片模式进行编辑');
     // 等待下一帧，确保卡片已渲染

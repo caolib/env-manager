@@ -108,6 +108,7 @@ import { computed, defineComponent, h, ref, watch, provide, inject } from 'vue';
 import { Checkbox, message, Modal } from '../ui';
 import PathDiffModal from './PathDiffModal.vue';
 import HighlightText from './HighlightText.vue';
+import { isSemicolonSeparatedVar } from '../utils/pathVar';
 
 const props = defineProps({
     envVar: {
@@ -152,9 +153,7 @@ const pathList = computed(() => {
 
 // 检查是否为分号分隔的值
 const isSemicolonSeparatedValue = computed(() => {
-    const value = props.envVar.value?.trim();
-    if (!value) return false;
-    return value.includes(';') && value.split(';').filter(Boolean).length > 1;
+    return isSemicolonSeparatedVar(props.envVar.name, props.envVar.value);
 });
 
 // Path 编辑相关
