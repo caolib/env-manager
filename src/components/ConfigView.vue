@@ -1,8 +1,10 @@
 <script setup>
 
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { message, Modal } from '../ui'
 import {
+    CalendarOutlined,
+    ClockCircleOutlined,
     DeleteOutlined,
     ExportOutlined,
     EyeOutlined,
@@ -42,7 +44,10 @@ const cleanupBackupFilesLoading = ref(false);
 const selectedBackupConfig = ref({});
 const selectedBackupFile = ref({});
 const showBackupDiffModal = ref(false);
+const backupTimeDisplayMode = ref('relative');
+const relativeTimeNow = ref(Date.now());
 let backupFilesLoadTimer = null;
+let relativeTimeTimer = null;
 
 // 普通变量备用值（与 HomeView 保持一致）
 const ALT_VALUES_KEY = 'env-manager-var-alternatives-v1';
@@ -71,6 +76,13 @@ const defaultExportFolder = computed({
     get: () => settingsStore.defaultExportFolder.value,
     set: (val) => { settingsStore.defaultExportFolder.value = val }
 });
+
+const backupMaxFiles = computed({
+    get: () => settingsStore.backupMaxFiles.value,
+    set: (val) => { settingsStore.setBackupMaxFiles(val) }
+});
+
+const isRelativeBackupTime = computed(() => backupTimeDisplayMode.value === 'relative');
 
 // 临时输入框
 const newKeyword = ref('');
@@ -753,6 +765,43 @@ const formatFileTime = (value) => {
     return date.toLocaleString('zh-CN', { hour12: false });
 };
 
+function formatRelativeTime(timeMs) {
+    if (!timeMs) return '-';
+
+    const diffMs = relativeTimeNow.value - timeMs;
+    if (diffMs < -60000) return '刚刚';
+    const seconds = Math.max(0, Math.floor(diffMs / 1000));
+    if (seconds < 60) return '刚刚';
+
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} 分钟前`;
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} 小时前`;
+
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days} 天前`;
+
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months} 个月前`;
+
+    const years = Math.floor(months / 12);
+    return `${years} 年前`;
+}
+
+function formatBackupFileTime(record) {
+    if (!isRelativeBackupTime.value) {
+        return formatFileTime(record?.exportTime);
+    }
+
+    return formatRelativeTime(getSortableTime(record));
+}
+
+function toggleBackupTimeDisplayMode() {
+    backupTimeDisplayMode.value = isRelativeBackupTime.value ? 'absolute' : 'relative';
+    relativeTimeNow.value = Date.now();
+}
+
 function compareNumberField(field) {
     return (a, b) => (Number(a?.[field]) || 0) - (Number(b?.[field]) || 0);
 }
@@ -936,6 +985,18 @@ onMounted(() => {
     checkAdminPrivileges();
     loadEnvVars();
     loadBackupFiles();
+    relativeTimeTimer = window.setInterval(() => {
+        relativeTimeNow.value = Date.now();
+    }, 60000);
+});
+
+onBeforeUnmount(() => {
+    if (backupFilesLoadTimer) {
+        window.clearTimeout(backupFilesLoadTimer);
+    }
+    if (relativeTimeTimer) {
+        window.clearInterval(relativeTimeTimer);
+    }
 });
 
 
@@ -1034,6 +1095,15 @@ onMounted(() => {
                 <h3>备份文件</h3>
             </div>
             <div class="category-content">
+                <div class="setting-row">
+                    <a-typography-text class="setting-label">最大保留数量</a-typography-text>
+                    <div class="setting-control">
+                        <a-input-number v-model:value="backupMaxFiles" :min="1" :precision="0"
+                            class="backup-max-input" />
+                        <span class="setting-note">导出后自动保留最近 {{ backupMaxFiles }} 个配置文件</span>
+                    </div>
+                </div>
+
                 <div class="setting-row align-start">
                     <a-typography-text class="setting-label">备份操作</a-typography-text>
                     <div class="backup-actions">
@@ -1054,6 +1124,12 @@ onMounted(() => {
                     <a-typography-text class="setting-label">目录文件</a-typography-text>
                     <div class="backup-file-list">
                         <div class="backup-file-toolbar">
+                            <a-button size="small" @click="toggleBackupTimeDisplayMode"
+                                :title="isRelativeBackupTime ? '切换为完整时间' : '切换为相对时间'">
+                                <ClockCircleOutlined v-if="isRelativeBackupTime" />
+                                <CalendarOutlined v-else />
+                                {{ isRelativeBackupTime ? '相对时间' : '完整时间' }}
+                            </a-button>
                             <a-button size="small" @click="loadBackupFiles" :loading="backupFilesLoading">
                                 <ReloadOutlined />
                                 刷新
@@ -1084,7 +1160,7 @@ onMounted(() => {
                                 </template>
 
                                 <template v-else-if="column.key === 'exportTime'">
-                                    {{ formatFileTime(record.exportTime) }}
+                                    {{ formatBackupFileTime(record) }}
                                 </template>
 
                                 <template v-else-if="column.key === 'systemVarCount'">
@@ -1286,6 +1362,10 @@ div.config-view.diff-mode {
 .backup-file-list {
     width: 100%;
     min-width: 0;
+}
+
+.backup-max-input {
+    width: 120px;
 }
 
 .backup-file-toolbar {

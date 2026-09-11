@@ -11,7 +11,7 @@ const defaultSettings = {
     sensitiveKeywords: ['key', 'token', 'password', 'secret', 'credential', 'auth', 'apikey', 'api_key'],
     layoutMode: 'card', // 'card' | 'table'
     defaultExportFolder: '',
-    backupMaxFiles: 10
+    backupMaxFiles: 100
 }
 
 function normalizeMaxFiles(value) {
