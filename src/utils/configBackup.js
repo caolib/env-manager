@@ -31,6 +31,8 @@ export function buildCurrentConfig(beijingTime) {
         exportTime: beijingTime.toISOString(),
         settings: {
             theme: settingsStore.theme.value,
+            primaryColor: settingsStore.primaryColor.value,
+            fontFamily: settingsStore.fontFamily.value,
             sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
             sensitiveKeywords: settingsStore.sensitiveKeywords.value,
             defaultExportFolder: settingsStore.defaultExportFolder.value,

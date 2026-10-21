@@ -185,6 +185,8 @@ const getCurrentConfig = () => {
         version: '1.2.0',
         settings: {
             theme: settingsStore.theme.value,
+            primaryColor: settingsStore.primaryColor.value,
+            fontFamily: settingsStore.fontFamily.value,
             sensitiveFieldsEnabled: settingsStore.sensitiveFieldsEnabled.value,
             sensitiveKeywords: settingsStore.sensitiveKeywords.value,
             defaultExportFolder: settingsStore.defaultExportFolder.value,
@@ -253,6 +255,8 @@ const processImport = async (config) => {
         if (config.settings) {
             const s = config.settings;
             if (s.theme !== undefined) settingsStore.setTheme(s.theme);
+            if (s.primaryColor !== undefined) settingsStore.primaryColor.value = s.primaryColor;
+            if (s.fontFamily !== undefined) settingsStore.fontFamily.value = s.fontFamily;
             if (s.sensitiveFieldsEnabled !== undefined) settingsStore.setSensitiveFieldsEnabled(!!s.sensitiveFieldsEnabled);
             if (s.sensitiveKeywords !== undefined && Array.isArray(s.sensitiveKeywords)) settingsStore.setSensitiveKeywords(s.sensitiveKeywords);
             if (s.defaultExportFolder !== undefined) settingsStore.setDefaultExportFolder(s.defaultExportFolder);
