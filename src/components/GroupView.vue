@@ -441,7 +441,7 @@ const applyScheme = async (group, scheme) => {
 
         <!-- 变量组弹窗 -->
         <a-modal v-model:open="showGroupModal" :title="editingGroup ? '编辑变量组' : '添加变量组'" width="760px"
-            :body-style="{ minHeight: '360px', overflow: 'visible' }" @ok="saveGroup">
+            :body-style="{ minHeight: '320px', maxHeight: '62vh', overflowY: 'auto' }" @ok="saveGroup">
             <a-form layout="vertical">
                 <a-form-item label="组名" required>
                     <a-input v-model:value="groupForm.name" placeholder="例如：Claude 账号" />
@@ -478,7 +478,8 @@ const applyScheme = async (group, scheme) => {
         </a-modal>
 
         <!-- 方案弹窗 -->
-        <a-modal v-model:open="showSchemeModal" :title="editingScheme ? '编辑方案' : '添加方案'" @ok="saveScheme">
+        <a-modal v-model:open="showSchemeModal" :title="editingScheme ? '编辑方案' : '添加方案'" width="720px"
+            :body-style="{ maxHeight: '58vh', overflowY: 'auto' }" @ok="saveScheme">
             <a-form layout="vertical">
                 <a-form-item label="方案名称" required>
                     <a-input v-model:value="schemeForm.name" placeholder="例如：个人账号" />
