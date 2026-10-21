@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> 开发与发布流程见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)（版本号、CHANGELOG 格式、`pnpm publish:ztools`、CLI 已知问题）。
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview

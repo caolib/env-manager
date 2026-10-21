@@ -111,6 +111,8 @@ env-manager/
 
 欢迎提交 Issue 和 Pull Request！
 
+开发调试与发版流程见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
 ## 许可证
 
 MIT License
