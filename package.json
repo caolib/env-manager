@@ -9,6 +9,7 @@
     "build": "vite build",
     "lint": "eslint . --ext .vue,.js,.jsx",
     "publish:ztools": "node scripts/publish.mjs",
+    "package:ztools": "node scripts/package.mjs",
     "lint:fix": "eslint . --ext .vue,.js,.jsx --fix"
   },
   "dependencies": {

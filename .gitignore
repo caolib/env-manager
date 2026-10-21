@@ -29,3 +29,6 @@ dist-ssr
 
 # Agent skills / tooling artifacts
 .codebuddy/
+
+# 本地打包产物
+release/
