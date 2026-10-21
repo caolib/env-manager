@@ -39,6 +39,32 @@ pnpm build      # 输出到 web/（会清空旧产物，assets 文件名带 hash
 
 改动源码后要提交最新的 `web/`，否则发布出去的还是旧界面。
 
+## 本地打包（自用 / 分发 / 备份）
+
+```bash
+pnpm package:ztools
+```
+
+脚本会依次执行：`pnpm build` → 读取 `plugin.json` 的版本号 → 只收集运行必需文件 → 生成 `release/env-manager-<版本>.zip`（约 120 KB）。
+
+包内结构（`plugin.json` 必须位于压缩包根，不能多套一层文件夹）：
+
+```
+plugin.json
+logo.png
+preload/{services.js, package.json}
+web/index.html + web/assets/*
+CHANGELOG.md
+README.md
+```
+
+注意：
+
+- 自定义输出目录：`node scripts/package.mjs --out <dir>`
+- `release/` 已加入 `.gitignore`，不会误提交
+- 不要直接压缩项目根目录：`node_modules` 有 140 MB，压出来约 24 MB，且会触发「缺少 plugin.json」（多了一层目录或打包内容不对）
+- 如需确认包内容：`python -c "import zipfile;print(zipfile.ZipFile('release/env-manager-0.0.8.zip').namelist())"` 或解压后查看
+
 ## 发版步骤
 
 1. 改版本号（两处必须一致）
