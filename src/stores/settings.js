@@ -7,11 +7,29 @@ const SETTINGS_KEY = 'utools-plugin-template-settings'
 // 默认设置值
 const defaultSettings = {
     theme: 'system',
+    primaryColor: '#2563eb',
+    fontFamily: "'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', '微软雅黑', system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
     sensitiveFieldsEnabled: true,
     sensitiveKeywords: ['key', 'token', 'password', 'secret', 'credential', 'auth', 'apikey', 'api_key'],
     layoutMode: 'card', // 'card' | 'table'
     defaultExportFolder: '',
     backupMaxFiles: 100
+}
+
+export const DEFAULT_SETTINGS = defaultSettings
+
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+
+function normalizeColor(value) {
+    if (typeof value !== 'string') return defaultSettings.primaryColor
+    const color = value.trim().toLowerCase()
+    return HEX_COLOR_RE.test(color) ? color : defaultSettings.primaryColor
+}
+
+function normalizeFontFamily(value) {
+    if (typeof value !== 'string') return defaultSettings.fontFamily
+    const font = value.replace(/[<>{}]/g, '').trim()
+    return font ? font.slice(0, 200) : defaultSettings.fontFamily
 }
 
 function normalizeMaxFiles(value) {
@@ -30,6 +48,8 @@ function normalizeSettings(saved) {
     delete merged.startupExportEnabled
     delete merged.startupExportMaxFiles
     merged.backupMaxFiles = normalizeMaxFiles(merged.backupMaxFiles)
+    merged.primaryColor = normalizeColor(merged.primaryColor)
+    merged.fontFamily = normalizeFontFamily(merged.fontFamily)
     return merged
 }
 
@@ -63,6 +83,16 @@ export function useSettingsStore() {
     const theme = computed({
         get: () => settings.value.theme,
         set: (val) => { settings.value.theme = val }
+    })
+
+    const primaryColor = computed({
+        get: () => normalizeColor(settings.value.primaryColor),
+        set: (val) => { settings.value.primaryColor = normalizeColor(val) }
+    })
+
+    const fontFamily = computed({
+        get: () => normalizeFontFamily(settings.value.fontFamily),
+        set: (val) => { settings.value.fontFamily = normalizeFontFamily(val) }
     })
 
     const sensitiveFieldsEnabled = computed({
@@ -101,6 +131,8 @@ export function useSettingsStore() {
     return {
         theme,
         setTheme,
+        primaryColor,
+        fontFamily,
         sensitiveFieldsEnabled,
         setSensitiveFieldsEnabled,
         sensitiveKeywords,

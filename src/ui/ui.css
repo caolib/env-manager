@@ -1,3 +1,8 @@
+:root {
+  /* 用户可自定义的品牌色，其余主色由其派生 */
+  --brand: #2563eb;
+}
+
 :root,
 :root[data-theme="light"] {
   --ui-bg: #f4f4f4;
@@ -11,9 +16,9 @@
   --ui-text: #14171c;
   --ui-text-muted: #5a6472;
   --ui-text-soft: #8992a1;
-  --ui-primary: #2563eb;
-  --ui-primary-hover: #1d4ed8;
-  --ui-primary-soft: rgba(37, 99, 235, 0.1);
+  --ui-primary: var(--brand);
+  --ui-primary-hover: color-mix(in srgb, var(--brand) 82%, #000);
+  --ui-primary-soft: color-mix(in srgb, var(--brand) 12%, transparent);
   --ui-danger: #d92d20;
   --ui-success: #067647;
   --ui-warning: #b54708;
@@ -45,20 +50,20 @@
 }
 
 :root[data-theme="dark"] {
-  --ui-bg: #0e1014;
-  --ui-surface: #1a1d24;
-  --ui-surface-muted: #15181e;
-  --ui-raised-surface: #22262f;
-  --ui-raised-surface-hover: #2a2f39;
-  --ui-floating-surface: #22262f;
-  --ui-border: #333b48;
-  --ui-border-strong: #4d5767;
+  --ui-bg: #303133;
+  --ui-surface: #3f4147;
+  --ui-surface-muted: #292b2f;
+  --ui-raised-surface: #484b52;
+  --ui-raised-surface-hover: #52565e;
+  --ui-floating-surface: #3f4147;
+  --ui-border: #555962;
+  --ui-border-strong: #6f737e;
   --ui-text: #e9ecf1;
-  --ui-text-muted: #a0a9b8;
+  --ui-text-muted: #b0b8c6;
   --ui-text-soft: #8b94a3;
-  --ui-primary: #5b9bff;
-  --ui-primary-hover: #83b4ff;
-  --ui-primary-soft: rgba(91, 155, 255, 0.16);
+  --ui-primary: color-mix(in srgb, var(--brand) 76%, #fff);
+  --ui-primary-hover: color-mix(in srgb, var(--brand) 60%, #fff);
+  --ui-primary-soft: color-mix(in srgb, var(--brand) 26%, transparent);
   --ui-danger: #f97066;
   --ui-success: #4ade80;
   --ui-warning: #f5c451;
@@ -69,7 +74,7 @@
   --ui-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --ui-shadow-md: 0 6px 16px rgba(0, 0, 0, 0.45);
   --ui-shadow-lg: 0 20px 52px rgba(0, 0, 0, 0.55);
-  --ui-field-bg: #1a1e25;
+  --ui-field-bg: #292b2f;
   --ant-color-border: var(--ui-border);
   --ant-color-border-secondary: var(--ui-border);
   --ant-border-color-split: var(--ui-border);
@@ -211,21 +216,21 @@
 
 .ui-tag-blue,
 .ui-tag-processing {
-  border-color: rgba(9, 105, 218, 0.35);
-  background: rgba(9, 105, 218, 0.1);
+  border-color: color-mix(in srgb, var(--ui-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--ui-primary) 10%, transparent);
   color: var(--ui-primary);
 }
 
 .ui-tag-orange,
 .ui-tag-warning {
-  border-color: rgba(154, 103, 0, 0.35);
-  background: rgba(154, 103, 0, 0.1);
+  border-color: color-mix(in srgb, var(--ui-warning) 35%, transparent);
+  background: color-mix(in srgb, var(--ui-warning) 10%, transparent);
   color: var(--ui-warning);
 }
 
 .ui-tag-success {
-  border-color: rgba(26, 127, 55, 0.35);
-  background: rgba(26, 127, 55, 0.12);
+  border-color: color-mix(in srgb, var(--ui-success) 35%, transparent);
+  background: color-mix(in srgb, var(--ui-success) 12%, transparent);
   color: var(--ui-success);
 }
 
@@ -832,25 +837,25 @@
 }
 
 .ui-message-success {
-  border-color: rgba(26, 127, 55, 0.7);
+  border-color: color-mix(in srgb, var(--ui-success) 70%, transparent);
   background: var(--ui-success-bg);
   color: var(--ui-success);
 }
 
 .ui-message-error {
-  border-color: rgba(209, 36, 47, 0.7);
+  border-color: color-mix(in srgb, var(--ui-danger) 70%, transparent);
   background: var(--ui-danger-bg);
   color: var(--ui-danger);
 }
 
 .ui-message-warning {
-  border-color: rgba(154, 103, 0, 0.7);
+  border-color: color-mix(in srgb, var(--ui-warning) 70%, transparent);
   background: var(--ui-warning-bg);
   color: var(--ui-warning);
 }
 
 .ui-message-info {
-  border-color: rgba(9, 105, 218, 0.6);
+  border-color: color-mix(in srgb, var(--ui-primary) 60%, transparent);
   background: var(--ui-info-bg);
   color: var(--ui-primary);
 }

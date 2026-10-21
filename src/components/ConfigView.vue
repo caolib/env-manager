@@ -14,7 +14,7 @@ import {
     PlusOutlined,
     ReloadOutlined
 } from '@ant-design/icons-vue';
-import { useSettingsStore } from '../stores/settings'
+import { useSettingsStore, DEFAULT_SETTINGS } from '../stores/settings'
 import { useGroupsStore } from '../stores/groups'
 import { useAlternativesStore } from '../stores/alternatives'
 import { getData, setData } from '../utils/store'
@@ -60,6 +60,61 @@ const isAdmin = ref(false);
 const theme = computed({
     get: () => settingsStore.theme.value,
     set: (val) => { settingsStore.theme.value = val }
+});
+
+// ===== 主题色 / 字体族 =====
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+const primaryColorInput = ref(settingsStore.primaryColor.value);
+const fontFamilyInput = ref(settingsStore.fontFamily.value);
+
+watch(() => settingsStore.primaryColor.value, (value) => {
+    primaryColorInput.value = value;
+});
+
+watch(() => settingsStore.fontFamily.value, (value) => {
+    fontFamilyInput.value = value;
+});
+
+function commitPrimaryColor() {
+    const next = String(primaryColorInput.value || '').trim();
+    if (!HEX_COLOR_RE.test(next)) {
+        message.warning('请输入 #RRGGBB 格式的颜色');
+        primaryColorInput.value = settingsStore.primaryColor.value;
+        return;
+    }
+    primaryColorInput.value = next.toLowerCase();
+    settingsStore.primaryColor.value = primaryColorInput.value;
+}
+
+function pickPrimaryColor(event) {
+    primaryColorInput.value = event.target.value;
+    commitPrimaryColor();
+}
+
+function resetPrimaryColor() {
+    primaryColorInput.value = DEFAULT_SETTINGS.primaryColor;
+    settingsStore.primaryColor.value = DEFAULT_SETTINGS.primaryColor;
+}
+
+function commitFontFamily() {
+    const next = fontFamilyInput.value.trim();
+    if (!next) {
+        message.warning('字体族不能为空');
+        fontFamilyInput.value = settingsStore.fontFamily.value;
+        return;
+    }
+    settingsStore.fontFamily.value = next;
+}
+
+function resetFontFamily() {
+    fontFamilyInput.value = DEFAULT_SETTINGS.fontFamily;
+    settingsStore.fontFamily.value = DEFAULT_SETTINGS.fontFamily;
+}
+
+const fontFamilyLabel = computed(() => {
+    const first = settingsStore.fontFamily.value.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+    return first || '系统默认';
 });
 
 const sensitiveFieldsEnabled = computed({
@@ -1031,6 +1086,30 @@ onBeforeUnmount(() => {
                         </a-radio-group>
                     </div>
                 </div>
+
+                <div class="setting-row">
+                    <a-typography-text class="setting-label">主题色</a-typography-text>
+                    <div class="color-control">
+                        <input class="color-swatch" type="color" :value="primaryColorInput" aria-label="选择主题色"
+                            @input="pickPrimaryColor" />
+                        <a-input v-model:value="primaryColorInput" size="small" class="color-input"
+                            placeholder="#2563eb" @change="commitPrimaryColor" @keydown.enter="commitPrimaryColor" />
+                        <a-button size="small" @click="resetPrimaryColor" title="恢复默认主题色">默认</a-button>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <a-typography-text class="setting-label">字体族</a-typography-text>
+                    <div class="font-control">
+                        <a-input v-model:value="fontFamilyInput" size="small" placeholder="例如：Consolas, 'Microsoft YaHei'"
+                            @keydown.enter="commitFontFamily" />
+                        <div class="font-actions">
+                            <a-button size="small" type="primary" @click="commitFontFamily">应用</a-button>
+                            <a-button size="small" @click="resetFontFamily" title="恢复默认字体族">默认</a-button>
+                            <span class="setting-note font-preview">当前：{{ fontFamilyLabel }}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -1379,6 +1458,61 @@ div.config-view.diff-mode {
     flex: 1;
     min-width: 0;
     padding: 0 8px;
+}
+
+.color-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.color-swatch {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    padding: 2px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-field-bg);
+    cursor: pointer;
+}
+
+.color-swatch::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.color-swatch::-webkit-color-swatch {
+    border: 0;
+    border-radius: 4px;
+}
+
+.color-control :deep(.ui-input),
+.color-input {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono);
+}
+
+.font-control {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.font-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.font-preview {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .keyword-control {

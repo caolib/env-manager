@@ -398,16 +398,16 @@ watch(
 
 .diff-cell.add,
 .unified-row.add {
-    background: rgba(82, 196, 26, 0.14);
+    background: color-mix(in srgb, var(--ui-success) 14%, transparent);
 }
 
 .diff-cell.remove,
 .unified-row.remove {
-    background: rgba(255, 77, 79, 0.13);
+    background: color-mix(in srgb, var(--ui-danger) 13%, transparent);
 }
 
 .diff-cell.modify {
-    background: rgba(250, 173, 20, 0.14);
+    background: color-mix(in srgb, var(--ui-warning) 14%, transparent);
 }
 
 .diff-cell.empty {

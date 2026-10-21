@@ -40,6 +40,19 @@ watch(actualTheme, () => {
   applyTheme();
 });
 
+// 应用自定义主题色与字体族
+const applyAppearance = () => {
+  const root = document.documentElement;
+  root.style.setProperty('--brand', settingsStore.primaryColor.value);
+  root.style.setProperty('--font-ui', settingsStore.fontFamily.value);
+};
+
+watch(
+  () => [settingsStore.primaryColor.value, settingsStore.fontFamily.value],
+  applyAppearance,
+  { immediate: true }
+);
+
 const navItems = [
   {
     key: 'home',
