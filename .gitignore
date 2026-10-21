@@ -26,3 +26,6 @@ dist-ssr
 *.lock.yaml
 
 .claude/settings.local.json
+
+# Agent skills / tooling artifacts
+.codebuddy/
