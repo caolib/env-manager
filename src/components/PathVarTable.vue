@@ -31,7 +31,7 @@
     <a-alert v-if="isDirty" message="有未保存的更改" type="warning" show-icon class="path-var-alert" />
 
     <a-table :data-source="tableData" :columns="columns" :pagination="false" size="small"
-      :row-key="record => record.key" :scroll="{ x: 680, y: 420 }" bordered>
+      :row-key="record => record.key" :scroll="{ x: 680, y: 340 }" bordered>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'path'">
           <div class="path-input-highlight-wrap">
@@ -298,9 +298,9 @@ function showMissingPathCleanupModal(missingPaths, duplicateRemovedCount) {
       return () => h('div', {}, [
         h('p', { style: { marginBottom: '8px' } }, `变量名: ${props.envVar.name}`),
         duplicateRemovedCount > 0
-          ? h('p', { style: { marginBottom: '8px', color: '#1677ff' } }, `已自动删除重复路径: ${duplicateRemovedCount} 项`)
+          ? h('p', { style: { marginBottom: '8px', color: 'var(--ui-primary)' } }, `已自动删除重复路径: ${duplicateRemovedCount} 项`)
           : null,
-        h('p', { style: { marginBottom: '12px', color: '#ff4d4f', fontWeight: 'bold' } }, `发现不存在路径: ${missingPaths.length} 项`),
+        h('p', { style: { marginBottom: '12px', color: 'var(--ui-danger)', fontWeight: 'bold' } }, `发现不存在路径: ${missingPaths.length} 项`),
         h('div', { style: { marginBottom: '8px' } }, [
           h(Checkbox, {
             checked: allSelected.value,
@@ -413,7 +413,8 @@ defineExpose({
 }
 
 .path-var-name {
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -423,10 +424,10 @@ defineExpose({
 }
 
 .path-diff-ready {
-  border-color: rgba(250, 173, 20, 0.75);
-  background: rgba(250, 173, 20, 0.16);
+  border-color: color-mix(in srgb, var(--ui-warning) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-warning) 14%, transparent);
   color: var(--ui-warning);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .path-input-highlight-wrap {
@@ -436,28 +437,31 @@ defineExpose({
 .path-highlight-field {
   display: block;
   width: 100%;
-  height: 24px;
+  height: 26px;
   padding: 0 8px;
   overflow: hidden;
   border: 1px solid var(--ui-border);
-  border-radius: 6px;
-  background: var(--ui-surface);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface-muted);
   color: var(--ui-text);
+  font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 22px;
+  line-height: 24px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: border-color 0.16s ease, background 0.16s ease;
 }
 
 .path-highlight-field:hover {
   border-color: var(--ui-primary);
+  background: var(--ui-surface);
 }
 
 .path-highlight-field:focus {
   outline: none;
   border-color: var(--ui-primary);
-  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.12);
+  box-shadow: var(--ui-ring);
 }
 
 .path-var-name :deep(.search-highlight) {
@@ -472,7 +476,14 @@ defineExpose({
   padding: 0;
 }
 
-:deep(.ant-table-cell) {
-  padding: 6px 8px !important;
+:deep(.ui-table td) {
+  padding: 5px 8px;
+  vertical-align: middle;
+}
+
+:deep(.ui-table .ui-input) {
+  background: var(--ui-surface-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 </style>

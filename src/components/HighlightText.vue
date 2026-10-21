@@ -50,8 +50,9 @@ function getHighlightParts(text, keyword) {
 
 <style scoped>
 .highlight-text-mark {
-  background-color: yellow;
-  color: red;
-  padding: 0;
+  padding: 0 1px;
+  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--ui-warning) 34%, transparent);
+  color: inherit;
 }
 </style>

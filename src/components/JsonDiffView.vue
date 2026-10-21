@@ -389,8 +389,8 @@ watch(
     min-width: 0;
     padding: 0 10px;
     overflow: hidden;
-    color: var(--ant-color-text);
-    font-family: inherit;
+    color: var(--ui-text);
+    font-family: var(--font-mono);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     word-break: break-word;

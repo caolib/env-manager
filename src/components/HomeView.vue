@@ -2,34 +2,37 @@
   <div class="env-manager">
     <!-- 工具栏 -->
     <div class="toolbar">
-      <a-space>
-        <a-button @click="loadEnvVars" size="small" :loading="loading">
+      <div class="toolbar-group">
+        <a-button @click="loadEnvVars" size="small" :loading="loading" title="重新读取环境变量">
           <ReloadOutlined />
           刷新
         </a-button>
-        <a-button @click="checkAllPaths" size="small" :loading="pathChecking">
+        <a-button @click="checkAllPaths" size="small" :loading="pathChecking" title="检测所有路径是否存在">
+          <FileSearchOutlined />
           路径检测
         </a-button>
+        <span class="toolbar-divider" aria-hidden="true"></span>
         <a-button @click="toggleLayoutMode" size="small"
           :title="settingsStore.layoutMode.value === 'card' ? '切换到表格模式' : '切换到卡片模式'">
           <AppstoreOutlined v-if="settingsStore.layoutMode.value === 'card'" />
           <UnorderedListOutlined v-else />
+          {{ settingsStore.layoutMode.value === 'card' ? '卡片' : '表格' }}
         </a-button>
-        <a-tooltip v-if="!isAdmin" placement="bottom">
-          <template #title>
-            <div style="max-width: 280px;">
-              <div>当前非管理员身份，修改系统变量时将弹出 UAC 授权窗口</div>
-            </div>
-          </template>
-          <a-tag color="processing">
-            <WarningOutlined /> 非管理员
-          </a-tag>
-        </a-tooltip>
-        <a-tag v-else color="success">
-          <CheckOutlined />
-          管理员
+      </div>
+      <a-tooltip v-if="!isAdmin" placement="bottom">
+        <template #title>
+          <div style="max-width: 280px;">
+            <div>当前非管理员身份，修改系统变量时将弹出 UAC 授权窗口</div>
+          </div>
+        </template>
+        <a-tag color="warning">
+          <WarningOutlined /> 非管理员
         </a-tag>
-      </a-space>
+      </a-tooltip>
+      <a-tag v-else color="success">
+        <CheckOutlined />
+        管理员
+      </a-tag>
     </div>
 
     <!-- 环境变量列表 -->
@@ -377,7 +380,8 @@ import {
   EditOutlined,
   DeleteOutlined,
   FolderOpenOutlined,
-  LinkOutlined
+  LinkOutlined,
+  FileSearchOutlined
 } from '@ant-design/icons-vue';
 import EnvVarCard from './EnvVarCard.vue';
 import HighlightText from './HighlightText.vue';
@@ -509,7 +513,25 @@ const searchKeyword = ref('');
 const loading = ref(false);
 const submitting = ref(false);
 const isAdmin = ref(false);
-const activeKeys = ref([]); // 默认折叠所有主页面板
+// 主面板展开状态持久化：记住上次的展开/折叠状态
+const HOME_PANELS_KEY = 'env-manager-home-panels';
+const DEFAULT_ACTIVE_KEYS = ['systemPath', 'userPath', 'system', 'user'];
+const savedPanelKeys = getData(HOME_PANELS_KEY, null);
+const activeKeys = ref(
+  Array.isArray(savedPanelKeys)
+    ? savedPanelKeys.filter(key => DEFAULT_ACTIVE_KEYS.includes(key))
+    : DEFAULT_ACTIVE_KEYS
+);
+
+let suppressPanelPersist = false; // 搜索触发的临时展开不写入偏好
+
+watch(activeKeys, (keys) => {
+  if (suppressPanelPersist) {
+    suppressPanelPersist = false;
+    return;
+  }
+  setData(HOME_PANELS_KEY, [...keys]);
+}, { deep: true });
 const systemPathVarActiveKeys = ref([]);
 const userPathVarActiveKeys = ref([]);
 const pathTableRefs = ref({});
@@ -1291,8 +1313,8 @@ function getPathItems(value) {
 function createPathCheckSummary(totalPaths, existCount, notExistCount) {
   return h('div', { style: { marginBottom: '16px' } }, [
     h('p', { style: { marginBottom: '8px' } }, `检测到 ${totalPaths} 个路径`),
-    h('p', { style: { marginBottom: '8px', color: '#52c41a', fontWeight: 'bold' } }, `✓ 存在: ${existCount} 个`),
-    h('p', { style: { marginBottom: '8px', color: '#ff4d4f', fontWeight: 'bold' } }, `✗ 不存在: ${notExistCount} 个`)
+    h('p', { style: { marginBottom: '8px', color: 'var(--ui-success)', fontWeight: 'bold' } }, `✓ 存在: ${existCount} 个`),
+    h('p', { style: { marginBottom: '8px', color: 'var(--ui-danger)', fontWeight: 'bold' } }, `✗ 不存在: ${notExistCount} 个`)
   ]);
 }
 
@@ -1391,11 +1413,11 @@ function showGlobalPathCleanupModal(totalPaths, existCount, notExistCount, notEx
         if (items.length === 0) return null;
 
         return h('div', { style: { marginBottom: '12px' } }, [
-          h('div', { style: { marginBottom: '6px', color: '#666', fontSize: '12px', fontWeight: 'bold' } }, `普通变量 (${items.length})`),
+          h('div', { style: { marginBottom: '6px', color: 'var(--ui-text-muted)', fontSize: '12px', fontWeight: 'bold' } }, `普通变量 (${items.length})`),
           ...items.map(item =>
             h('div', { style: { marginBottom: '8px', paddingLeft: '8px' } }, [
               renderItemCheckbox(item, h('div', { style: { display: 'inline-flex', flexDirection: 'column', gap: '2px', verticalAlign: 'top' } }, [
-                h('span', { style: { fontSize: '12px', color: '#666' } }, item.varName),
+                h('span', { style: { fontSize: '12px', color: 'var(--ui-text-muted)' } }, item.varName),
                 h('span', { style: { fontSize: '12px', wordBreak: 'break-all' } }, item.path)
               ]))
             ])
@@ -1413,10 +1435,10 @@ function showGlobalPathCleanupModal(totalPaths, existCount, notExistCount, notEx
         }, new Map());
 
         return h('div', { style: { marginBottom: '12px' } }, [
-          h('div', { style: { marginBottom: '6px', color: '#666', fontSize: '12px', fontWeight: 'bold' } }, `Path 变量 (${items.length})`),
+          h('div', { style: { marginBottom: '6px', color: 'var(--ui-text-muted)', fontSize: '12px', fontWeight: 'bold' } }, `Path 变量 (${items.length})`),
           ...Array.from(groupedByVar.entries()).map(([varName, varItems]) =>
             h('div', { style: { marginBottom: '10px', paddingLeft: '8px' } }, [
-              h('div', { style: { marginBottom: '4px', color: '#666', fontSize: '12px' } }, varName),
+              h('div', { style: { marginBottom: '4px', color: 'var(--ui-text-muted)', fontSize: '12px' } }, varName),
               ...varItems.map(item =>
                 h('div', { style: { marginBottom: '6px', paddingLeft: '12px' } }, [
                   renderItemCheckbox(item, h('span', { style: { fontSize: '12px', wordBreak: 'break-all' } }, item.path))
@@ -1555,7 +1577,7 @@ async function checkAllPaths() {
       width: 700,
       content: h('div', {}, [
         createPathCheckSummary(totalPaths, existCount, notExistCount),
-        h('div', { style: { marginTop: '16px', padding: '12px', backgroundColor: '#f6ffed', borderRadius: '4px', color: '#52c41a' } },
+        h('div', { style: { marginTop: '16px', padding: '12px', backgroundColor: 'var(--ui-success-bg)', borderRadius: '4px', color: 'var(--ui-success)' } },
           '所有路径都存在！'
         )
       ])
@@ -1573,9 +1595,10 @@ function setupSubInput() {
   if (window.ztools && window.ztools.setSubInput) {
     window.ztools.setSubInput(({ text }) => {
       searchKeyword.value = text;
-      // 搜索时自动展开所有面板
+      // 搜索时自动展开所有面板（不写入持久化状态，保留用户手动折叠的偏好）
       if (text) {
-        activeKeys.value = ['systemPath', 'userPath', 'system', 'user'];
+        suppressPanelPersist = true;
+        activeKeys.value = [...DEFAULT_ACTIVE_KEYS];
       }
     }, '搜索环境变量...');
   }
@@ -1602,22 +1625,46 @@ onMounted(() => {
 
 <style scoped>
 .env-manager {
-  height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .toolbar {
   display: flex;
-  justify-content: flex-start;
+  flex: 0 0 auto;
+  justify-content: space-between;
   align-items: center;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid var(--ant-color-border);
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-xs);
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--ui-border);
 }
 
 .content {
-  border-radius: 8px;
-  border: 1px solid var(--ant-color-border);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 1px 2px 2px;
 }
 
 .panel-header {
@@ -1636,14 +1683,29 @@ onMounted(() => {
   flex: 0 0 auto;
   gap: 8px;
   min-width: 0;
-  font-size: 16px;
+  color: var(--ui-text);
+  font-size: 13.5px;
   font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.panel-title :deep(.anticon) {
+  color: var(--ui-primary);
+  font-size: 14px;
+}
+
+.panel-title :deep(.ui-tag) {
+  min-height: 19px;
+  padding: 0 7px;
+  font-size: 11px;
+  line-height: 17px;
 }
 
 .vars-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  align-items: start;
 }
 
 .path-table-stack {
@@ -1665,10 +1727,10 @@ onMounted(() => {
 }
 
 .path-diff-ready {
-  border-color: rgba(250, 173, 20, 0.75);
-  background: rgba(250, 173, 20, 0.16);
+  border-color: color-mix(in srgb, var(--ui-warning) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-warning) 14%, transparent);
   color: var(--ui-warning);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .path-var-collapse {
@@ -1676,12 +1738,18 @@ onMounted(() => {
 }
 
 .path-var-collapse :deep(.ui-collapse-panel) {
-  border-color: var(--ui-border-strong);
-  background: var(--ui-surface-muted);
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-xs);
 }
 
 .path-var-collapse :deep(.ui-collapse-header) {
-  background: var(--ui-surface-muted);
+  background: var(--ui-surface);
+}
+
+.path-var-collapse :deep(.ui-collapse-header:hover) {
+  background: var(--ui-raised-surface);
 }
 
 .path-var-collapse :deep(.ui-collapse-content) {
@@ -1711,15 +1779,18 @@ onMounted(() => {
 }
 
 .path-var-panel-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
   font-weight: 600;
 }
 
 .empty-path-section {
-  padding: 10px 12px;
-  border: 1px dashed var(--ant-color-border);
-  border-radius: 6px;
-  color: var(--ant-color-text-tertiary);
+  padding: 18px 12px;
+  border: 1px dashed var(--ui-border-strong);
+  border-radius: var(--ui-radius-md);
+  color: var(--ui-text-soft);
   font-size: 13px;
+  text-align: center;
 }
 
 

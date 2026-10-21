@@ -190,7 +190,8 @@ const UiTable = defineComponent({
     loading: Boolean,
     bordered: Boolean,
     size: { type: String, default: 'middle' },
-    locale: { type: Object, default: () => ({}) }
+    locale: { type: Object, default: () => ({}) },
+    scroll: { type: Object, default: () => ({}) }
   },
   setup(props, { slots, attrs }) {
     const page = ref(1);
@@ -316,8 +317,21 @@ const UiTable = defineComponent({
           attrs.class
         ]
       }, [
-        h('div', { class: 'ui-table-scroll' }, [
-          h('table', { class: 'ui-table' }, [
+        h('div', {
+          class: 'ui-table-scroll',
+          style: props.scroll?.y
+            ? {
+              maxHeight: typeof props.scroll.y === 'number' ? `${props.scroll.y}px` : props.scroll.y,
+              overflow: 'auto'
+            }
+            : null
+        }, [
+          h('table', {
+            class: 'ui-table',
+            style: props.scroll?.x
+              ? { minWidth: typeof props.scroll.x === 'number' ? `${props.scroll.x}px` : props.scroll.x }
+              : null
+          }, [
             h('thead', {}, h('tr', {}, props.columns.map(column =>
               h('th', {
                 key: column.key || column.dataIndex,
@@ -452,7 +466,17 @@ const UiCollapsePanel = defineComponent({
           collapse?.toggle(panelKey.value);
         }
       }, [
-        h('span', { class: ['ui-collapse-arrow', { open: isActive.value }] }, '›'),
+        h('span', { class: ['ui-collapse-arrow', { open: isActive.value }], 'aria-hidden': 'true' }, [
+          h('svg', { viewBox: '0 0 16 16', width: 12, height: 12, fill: 'none' }, [
+            h('path', {
+              d: 'M6 3.5 10.5 8 6 12.5',
+              stroke: 'currentColor',
+              'stroke-width': 1.6,
+              'stroke-linecap': 'round',
+              'stroke-linejoin': 'round'
+            })
+          ])
+        ]),
         h('span', { class: 'ui-collapse-title' }, slotContent(slots, 'header'))
       ]),
       isActive.value ? h('div', { class: 'ui-collapse-content' }, slotContent(slots)) : null
@@ -887,7 +911,22 @@ const UiEmpty = defineComponent({
   },
   setup(props, { slots }) {
     return () => h('div', { class: 'ui-empty' }, [
-      h('div', { class: 'ui-empty-mark' }, '∅'),
+      h('div', { class: 'ui-empty-mark' }, [
+        h('svg', { viewBox: '0 0 48 48', width: 40, height: 40, fill: 'none', 'aria-hidden': 'true' }, [
+          h('path', {
+            d: 'M9 20.5 12.5 10h23L39 20.5V36a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2V20.5Z',
+            stroke: 'currentColor',
+            'stroke-width': 2,
+            'stroke-linejoin': 'round'
+          }),
+          h('path', {
+            d: 'M9 22h9l1.8 3.6h8.4L30 22h9',
+            stroke: 'currentColor',
+            'stroke-width': 2,
+            'stroke-linejoin': 'round'
+          })
+        ])
+      ]),
       h('div', { class: 'ui-empty-description' }, props.description || '暂无数据'),
       slots.extra ? h('div', { class: 'ui-empty-extra' }, slotContent(slots, 'extra')) : null
     ]);

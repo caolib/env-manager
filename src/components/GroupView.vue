@@ -458,7 +458,7 @@ const applyScheme = async (group, scheme) => {
                             placeholder="输入变量名或从列表选择" style="flex: 1" @select="addVariableToGroup">
                             <a-input @pressEnter="addVariableToGroup">
                                 <template #suffix>
-                                    <SearchOutlined style="color: rgba(0, 0, 0, 0.25)" />
+                                    <SearchOutlined style="color: var(--ui-text-soft)" />
                                 </template>
                             </a-input>
                         </a-auto-complete>
@@ -499,41 +499,59 @@ const applyScheme = async (group, scheme) => {
 
 <style scoped>
 .group-view {
-    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     height: 100%;
-    overflow-y: auto;
+    min-height: 0;
+    overflow: auto;
 }
 
 .toolbar {
-    margin-bottom: 16px;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface);
+    box-shadow: var(--ui-shadow-xs);
 }
 
 .groups-container {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 12px;
     align-items: stretch;
 }
 
 .empty-container {
     grid-column: 1 / -1;
-    padding: 40px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 360px;
+    height: 100%;
     text-align: center;
 }
 
 .empty-tip {
-    color: var(--ant-text-color-secondary);
     margin-bottom: 16px;
+    color: var(--ui-text-muted);
 }
 
 .group-card {
-    border-radius: 8px;
     display: flex;
-    border: 2px solid var(--blue);
     flex-direction: column;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    background: var(--ui-surface);
+    box-shadow: var(--ui-shadow-xs);
 }
 
-:deep(.ant-card-body) {
+:deep(.ui-card-body) {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -581,10 +599,12 @@ const applyScheme = async (group, scheme) => {
 
 .empty-schemes {
     padding: 20px;
+    border: 1px dashed var(--ui-border-strong);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface-muted);
+    color: var(--ui-text-soft);
+    font-size: 13px;
     text-align: center;
-    border-radius: 4px;
-    color: grey;
-    border: 1px dashed var(--ant-border-color-split);
 }
 
 .var-input-group {

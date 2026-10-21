@@ -199,12 +199,12 @@ const pathDiffs = computed(() => {
 }
 
 .path-stat-added {
-    color: #1a7f37;
+    color: var(--ui-success);
     font-weight: 600;
 }
 
 .path-stat-removed {
-    color: #d1242f;
+    color: var(--ui-danger);
     font-weight: 600;
 }
 

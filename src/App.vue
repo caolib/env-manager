@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref, watch, computed, provide } from 'vue';
 import { Modal } from './ui';
+import { HomeOutlined, AppstoreOutlined, SettingOutlined } from '@ant-design/icons-vue';
 import HomeView from './components/HomeView.vue';
 import ConfigView from './components/ConfigView.vue';
 import GroupView from './components/GroupView.vue';
@@ -43,14 +44,17 @@ const navItems = [
   {
     key: 'home',
     label: '主页',
+    icon: HomeOutlined,
   },
   {
     key: 'group',
     label: '变量组',
+    icon: AppstoreOutlined,
   },
   {
     key: 'config',
     label: '配置',
+    icon: SettingOutlined,
   },
 ];
 
@@ -163,9 +167,11 @@ const handleMenuClick = (key) => {
           :key="item.key"
           type="button"
           :class="['app-nav-item', { active: currentView === item.key }]"
+          :aria-current="currentView === item.key ? 'page' : undefined"
           @click="handleMenuClick(item.key)"
         >
-          {{ item.label }}
+          <component :is="item.icon" class="app-nav-icon" />
+          <span>{{ item.label }}</span>
         </button>
       </nav>
     </header>
@@ -181,45 +187,69 @@ const handleMenuClick = (key) => {
 
 <style scoped>
 .app-shell {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
   background: transparent;
 }
 
 .app-header {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 10;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  min-height: 40px;
-  padding: 0 12px;
+  gap: 16px;
+  min-height: 44px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--ui-border);
-  background: var(--bg-color);
+  background: var(--ui-bg);
 }
 
 .app-nav {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-muted);
 }
 
 .app-nav-item {
-  min-height: 30px;
-  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 12px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-sm);
   background: transparent;
   color: var(--ui-text-muted);
   font-size: 13px;
+  font-weight: 500;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.app-nav-item:hover,
-.app-nav-item.active {
-  background: var(--ui-surface-muted);
+.app-nav-item:hover {
+  background: var(--ui-raised-surface-hover);
   color: var(--ui-text);
 }
 
+.app-nav-item.active {
+  background: var(--ui-surface);
+  color: var(--ui-primary);
+  box-shadow: var(--ui-shadow-xs);
+}
+
+.app-nav-icon {
+  font-size: 14px;
+}
+
 .app-content {
-  padding: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
 }
 </style>

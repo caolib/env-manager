@@ -11,19 +11,19 @@
       :bordered="true">
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'status'">
-          <span v-if="record.status === 'removed'" style="color: #ff4d4f;">
+          <span v-if="record.status === 'removed'" style="color: var(--ui-danger);">
             ✗ 删除
           </span>
-          <span v-else-if="record.status === 'added'" style="color: #52c41a;">
+          <span v-else-if="record.status === 'added'" style="color: var(--ui-success);">
             ✓ 新增
           </span>
-          <span v-else style="color: #666;">= 保持</span>
+          <span v-else style="color: var(--ui-text-muted);">= 保持</span>
         </template>
         <template v-else-if="column.key === 'path'">
-          <span v-if="record.status === 'removed'" style="color: #ff4d4f; text-decoration: line-through;">
+          <span v-if="record.status === 'removed'" style="color: var(--ui-danger); text-decoration: line-through;">
             {{ record.path }}
           </span>
-          <span v-else-if="record.status === 'added'" style="color: #52c41a; font-weight: bold;">
+          <span v-else-if="record.status === 'added'" style="color: var(--ui-success); font-weight: bold;">
             {{ record.path }}
           </span>
           <span v-else>{{ record.path }}</span>
@@ -35,13 +35,13 @@
     <div class="stats-info" v-if="statistics.added > 0 || statistics.removed > 0">
       <a-divider style="margin: 12px 0;" />
       <div class="stats-row">
-        <span v-if="statistics.added > 0" style="color: #52c41a; margin-right: 16px;">
+        <span v-if="statistics.added > 0" style="color: var(--ui-success); margin-right: 16px;">
           ✓ 新增 {{ statistics.added }} 项
         </span>
-        <span v-if="statistics.removed > 0" style="color: #ff4d4f; margin-right: 16px;">
+        <span v-if="statistics.removed > 0" style="color: var(--ui-danger); margin-right: 16px;">
           ✗ 删除 {{ statistics.removed }} 项
         </span>
-        <span style="color: #666;">= 保持 {{ statistics.unchanged }} 项不变</span>
+        <span style="color: var(--ui-text-muted);">= 保持 {{ statistics.unchanged }} 项不变</span>
       </div>
     </div>
   </div>

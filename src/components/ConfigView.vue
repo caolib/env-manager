@@ -1016,7 +1016,7 @@ onBeforeUnmount(() => {
             :currentConfig="currentConfig" :compareConfig="selectedBackupConfig" :compareFile="selectedBackupFile" />
 
         <template v-else>
-        <section class="config-category">
+        <section class="config-category compact">
             <div class="category-heading">
                 <h3>界面</h3>
             </div>
@@ -1034,12 +1034,12 @@ onBeforeUnmount(() => {
             </div>
         </section>
 
-        <section class="config-category">
+        <section class="config-category compact">
             <div class="category-heading">
                 <h3>敏感字段</h3>
             </div>
             <div class="category-content">
-                <div class="setting-row">
+                <div class="setting-row inline">
                     <a-typography-text class="setting-label">隐藏敏感字段</a-typography-text>
                     <div class="setting-control">
                         <a-switch v-model:checked="sensitiveFieldsEnabled" />
@@ -1047,8 +1047,7 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div v-if="sensitiveFieldsEnabled" class="setting-row align-start">
-                    <a-typography-text class="setting-label">关键词</a-typography-text>
+                <div v-if="sensitiveFieldsEnabled" class="setting-row align-start no-label">
                     <div class="keyword-control">
                         <div class="keyword-input-row">
                             <a-input v-model:value="newKeyword" placeholder="输入关键词（如：password、secret、token）"
@@ -1069,7 +1068,7 @@ onBeforeUnmount(() => {
             </div>
         </section>
 
-        <section class="config-category">
+        <section class="config-category wide">
             <div class="category-heading">
                 <h3>导出位置</h3>
             </div>
@@ -1098,7 +1097,7 @@ onBeforeUnmount(() => {
             </div>
         </section>
 
-        <section class="config-category">
+        <section class="config-category wide">
             <div class="category-heading">
                 <h3>备份文件</h3>
             </div>
@@ -1154,6 +1153,7 @@ onBeforeUnmount(() => {
                         </div>
 
                         <a-table :dataSource="backupFiles" :columns="backupFileColumns" :loading="backupFilesLoading"
+                            :scroll="{ x: 720 }"
                             :pagination="{
                                 pageSize: 10,
                                 size: 'small',
@@ -1244,11 +1244,19 @@ onBeforeUnmount(() => {
 
 <style scoped>
 div.config-view {
+    display: grid;
+    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
     width: 100%;
-    max-width: 1080px;
+    max-width: 1000px;
     box-sizing: border-box;
-    padding: 20px;
+    padding: 2px 2px 24px;
     margin: 0 auto;
+}
+
+.config-category.wide {
+    grid-column: 1 / -1;
 }
 
 div.config-view.diff-mode {
@@ -1262,23 +1270,27 @@ div.config-view.diff-mode {
 
 .config-category {
     width: 100%;
-    padding: 18px 0 22px;
-    border-bottom: 1px solid var(--ant-color-split, var(--ant-color-border));
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 13px 16px 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    background: var(--ui-surface);
+    box-shadow: var(--ui-shadow-xs);
 }
 
-.config-category:first-child {
-    padding-top: 0;
-}
-
-.config-category:last-of-type {
-    border-bottom: none;
+.category-heading {
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--ui-border);
 }
 
 .category-heading h3 {
-    margin: 0 0 12px;
-    font-size: 16px;
+    margin: 0;
+    color: var(--ui-text);
+    font-size: 13.5px;
     font-weight: 600;
-    line-height: 22px;
+    letter-spacing: 0.01em;
+    line-height: 20px;
 }
 
 .category-content {
@@ -1286,21 +1298,47 @@ div.config-view.diff-mode {
     flex-direction: column;
     gap: 0;
     min-width: 0;
-    border-top: 1px solid var(--ant-color-split, var(--ant-color-border));
 }
 
 .setting-row {
     display: grid;
-    grid-template-columns: 140px minmax(0, 1fr);
+    grid-template-columns: 116px minmax(0, 1fr);
     gap: 16px;
     align-items: center;
-    min-height: 32px;
-    padding: 14px 0;
-    border-bottom: 1px solid var(--ant-color-split, var(--ant-color-border));
+    min-height: 30px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--ui-border);
 }
 
 .setting-row:last-child {
     border-bottom: none;
+}
+
+.config-category.compact .setting-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 12px 0;
+}
+
+.config-category.compact .setting-row.inline {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.config-category.compact .setting-label {
+    line-height: 18px;
+}
+
+.config-category.compact .category-content {
+    gap: 2px;
+}
+
+.setting-row.no-label {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .setting-row.align-start {
@@ -1308,9 +1346,10 @@ div.config-view.diff-mode {
 }
 
 .setting-label {
-    line-height: 32px;
+    color: var(--ui-text-muted);
+    font-size: 13px;
     font-weight: 500;
-    color: var(--ant-color-text);
+    line-height: 30px;
     white-space: nowrap;
 }
 
@@ -1325,13 +1364,21 @@ div.config-view.diff-mode {
 }
 
 .setting-note {
-    color: var(--ant-color-text-secondary);
+    color: var(--ui-text-soft);
     font-size: 12px;
     line-height: 20px;
 }
 
 .theme-radio-group {
+    display: flex;
+    width: 100%;
     max-width: 100%;
+}
+
+.theme-radio-group :deep(.ui-radio-button) {
+    flex: 1;
+    min-width: 0;
+    padding: 0 8px;
 }
 
 .keyword-control {
@@ -1367,9 +1414,18 @@ div.config-view.diff-mode {
     min-width: 0;
 }
 
+.export-folder-actions {
+    flex-wrap: wrap;
+}
+
 .backup-file-list {
     width: 100%;
     min-width: 0;
+    overflow-x: auto;
+    padding: 10px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface-muted);
 }
 
 .backup-max-input {
@@ -1395,16 +1451,22 @@ div.config-view.diff-mode {
     cursor: pointer;
 }
 
-:deep(.backup-file-table .ant-table-cell) {
+:deep(.backup-file-table .ui-table td) {
     vertical-align: middle;
+}
+
+:deep(.backup-file-table .ui-table) {
+    border-radius: var(--ui-radius-sm);
+    overflow: hidden;
 }
 
 .import-area {
     width: 100%;
     min-width: 0;
-    padding: 16px;
-    border: 1px solid var(--ant-color-split, var(--ant-color-border));
-    background: var(--ant-color-fill-quaternary);
+    padding: 14px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface-muted);
 }
 
 .import-alert {
@@ -1421,22 +1483,31 @@ div.config-view.diff-mode {
 }
 
 .forbidden-item {
-    color: gray;
+    color: var(--ui-text-soft);
 }
 
 .type-icon {
     margin-right: 8px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
     div.config-view {
-        padding: 14px;
+        grid-template-columns: minmax(0, 1fr);
+        padding: 0 0 16px;
     }
 
-    .setting-row,
-    .export-folder-control {
+    .config-category {
+        padding: 12px 12px 4px;
+    }
+
+    .setting-row {
         grid-template-columns: 1fr;
-        gap: 10px;
+        gap: 8px;
+    }
+
+    .export-folder-control {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
     }
 
     .setting-label {

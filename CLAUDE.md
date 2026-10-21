@@ -15,7 +15,7 @@ pnpm install
 # Development server (hot reload on http://localhost:5173)
 pnpm dev
 
-# Production build (outputs to dist/)
+# Production build (outputs to src-ztools/dist/)
 pnpm build
 ```
 

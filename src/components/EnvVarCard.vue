@@ -47,7 +47,7 @@
                     <a-alert v-if="isDirty" message="有未保存的更改" type="warning" show-icon style="margin: 8px 0;" />
                     <div class="path-edit-list">
                         <div v-for="(item, index) in editList" :key="index" class="path-edit-item">
-                            <div style="position: relative; width: 800px;">
+                            <div style="position: relative; flex: 1; min-width: 0;">
                                 <a-input v-model:value="editList[index]" style="width: 100%" placeholder="输入路径..."
                                     size="small" />
                             </div>
@@ -542,9 +542,9 @@ function showMissingPathCleanupModal(missingPaths, duplicateRemovedCount) {
             return () => h('div', {}, [
                 h('p', { style: { marginBottom: '8px' } }, `变量名: ${props.envVar.name}`),
                 duplicateRemovedCount > 0
-                    ? h('p', { style: { marginBottom: '8px', color: '#1677ff' } }, `已自动删除重复路径: ${duplicateRemovedCount} 项`)
+                    ? h('p', { style: { marginBottom: '8px', color: 'var(--ui-primary)' } }, `已自动删除重复路径: ${duplicateRemovedCount} 项`)
                     : null,
-                h('p', { style: { marginBottom: '12px', color: '#ff4d4f', fontWeight: 'bold' } }, `发现不存在路径: ${missingPaths.length} 项`),
+                h('p', { style: { marginBottom: '12px', color: 'var(--ui-danger)', fontWeight: 'bold' } }, `发现不存在路径: ${missingPaths.length} 项`),
                 h('div', { style: { marginBottom: '8px' } }, [
                     h(Checkbox, {
                         checked: allSelected.value,
@@ -625,18 +625,20 @@ function checkEditPaths() {
 
 <style scoped>
 .env-var-card {
-    width: fit-content;
+    width: 100%;
     height: fit-content;
+    max-width: 100%;
     border: 1px solid var(--ui-border);
-    background: var(--ui-raised-surface);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.12);
-    transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface);
+    box-shadow: var(--ui-shadow-xs);
+    transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
 .env-var-card:hover {
     border-color: var(--ui-border-strong);
-    background: var(--ui-raised-surface-hover);
-    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.26), 0 4px 12px rgba(0, 0, 0, 0.14);
+    background: var(--ui-surface);
+    box-shadow: var(--ui-shadow-md);
 }
 
 :deep(.ant-card-head) {
@@ -650,14 +652,17 @@ function checkEditPaths() {
 }
 
 .var-name {
-    font-weight: 600;
-    font-size: 14px;
-    word-break: break-word;
     margin-right: 10px;
+    color: var(--ui-text);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    word-break: break-word;
 }
 
 .path-card .var-name {
-    color: green;
+    color: var(--ui-success);
 }
 
 .clickable {
@@ -667,9 +672,8 @@ function checkEditPaths() {
 }
 
 .clickable:hover {
-    opacity: 0.7;
-    background-color: rgba(0, 0, 0, 0.02);
-    border-radius: 2px;
+    background-color: var(--ui-surface-muted);
+    border-radius: var(--ui-radius-xs);
 }
 
 .clickable:active {
@@ -677,29 +681,34 @@ function checkEditPaths() {
 }
 
 .var-value {
-    font-size: 13px;
+    color: var(--ui-text-muted);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
     word-break: break-all;
 }
 
 .normal-value {
+    padding: 6px 8px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface-muted);
     white-space: pre-wrap;
-    padding: 0;
-    border-radius: 4px;
-    border: 1px solid var(--ant-color-border);
 }
 
 .path-list-container {
-    cursor: pointer;
-    padding: 8px 12px;
-    border-radius: 4px;
-    border: 1px solid var(--ant-color-border);
-    transition: opacity 0.3s;
-    max-height: 500px;
+    max-height: 320px;
+    padding: 8px 10px;
     overflow-y: auto;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface-muted);
+    cursor: pointer;
+    transition: border-color 0.16s ease;
 }
 
 .path-list-container:hover {
-    opacity: 0.8;
+    border-color: var(--ui-border-strong);
 }
 
 .path-list {
@@ -709,12 +718,17 @@ function checkEditPaths() {
 }
 
 .path-item {
-    padding: 2px 0;
-    font-size: 12px;
-    line-height: 1.5;
     display: flex;
     align-items: center;
     gap: 8px;
+    padding: 3px 4px;
+    border-radius: var(--ui-radius-xs);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.path-item:hover {
+    background: var(--ui-raised-surface);
 }
 
 .path-status {
@@ -724,11 +738,11 @@ function checkEditPaths() {
 }
 
 .path-exist {
-    color: #52c41a;
+    color: var(--ui-success);
 }
 
 .path-not-exist {
-    color: #ff4d4f;
+    color: var(--ui-danger);
 }
 
 .normal-value-wrapper {
@@ -738,10 +752,10 @@ function checkEditPaths() {
 }
 
 .path-edit-container {
-    padding: 12px;
-    padding-right: 0;
-    border-radius: 4px;
-    border: 1px solid var(--ant-color-border);
+    padding: 10px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface-muted);
 }
 
 .edit-actions {
@@ -755,8 +769,9 @@ function checkEditPaths() {
 
 .path-edit-item {
     display: flex;
-    margin-bottom: 8px;
     align-items: center;
+    gap: 4px;
+    margin-bottom: 6px;
 }
 
 .path-edit-item :deep(.ant-input) {
@@ -765,34 +780,31 @@ function checkEditPaths() {
 
 /* 禁用变量样式 */
 .disabled-card {
-    opacity: 0.6;
-    border-color: var(--ant-color-border-secondary);
-    background: var(--ui-raised-surface-hover);
-}
-
-.disabled-card :deep(.ant-card-head) {
-    background-color: var(--ant-color-fill-tertiary);
+    opacity: 0.72;
+    border-style: dashed;
+    border-color: var(--ui-border-strong);
+    background: var(--ui-surface-muted);
 }
 
 .disabled-text {
-    color: var(--ant-color-text-tertiary);
+    color: var(--ui-text-soft);
     text-decoration: line-through;
 }
 
 .disabled-card .var-value {
-    color: var(--ant-color-text-tertiary);
+    color: var(--ui-text-soft);
 }
 
 .env-card-context-menu {
     position: fixed;
     z-index: 3000;
     min-width: 180px;
-    padding: 6px;
+    padding: 5px;
     border: 1px solid var(--ui-border);
-    border-radius: 6px;
+    border-radius: var(--ui-radius-md);
     background: var(--ui-floating-surface);
     color: var(--ui-text);
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34), 0 4px 14px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--ui-shadow-lg);
 }
 
 .context-menu-item {
@@ -813,7 +825,11 @@ function checkEditPaths() {
 }
 
 .context-menu-item:hover {
-    background: var(--ui-surface-muted);
+    background: var(--ui-raised-surface-hover);
+}
+
+.context-menu-item.danger:hover {
+    background: var(--ui-danger-bg);
 }
 
 .context-menu-item.danger {
