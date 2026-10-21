@@ -28,7 +28,7 @@ if (!fs.existsSync(path.join(root, 'web', 'index.html'))) {
 }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ztools-package-'));
-const pkgDir = path.join(tmp, 'env-manager');
+const pkgDir = tmp; // 打包根目录，plugin.json 必须直接位于压缩包根
 
 for (const entry of KEEP_ENTRIES) {
   const src = path.join(root, entry);
@@ -45,12 +45,14 @@ execFileSync('git', ['init', '-q', tmp], { stdio: 'inherit' });
 execFileSync('git', ['-C', tmp, 'add', '-A'], { stdio: 'inherit' });
 execFileSync('git', ['-C', tmp, '-c', 'user.name=ztools', '-c', 'user.email=ztools@local',
   'commit', '-q', '-m', `package v${manifest.version}`], { stdio: 'inherit' });
-execFileSync('git', ['-C', tmp, 'archive', '--format=zip', '--prefix=env-manager/', '-o', zipPath, 'HEAD'], { stdio: 'inherit' });
+// 注意：plugin.json 必须在压缩包根目录，不能多套一层文件夹
+execFileSync('git', ['-C', tmp, 'archive', '--format=zip', '-o', zipPath, 'HEAD'], { stdio: 'inherit' });
 
 const size = (fs.statSync(zipPath).size / 1024).toFixed(0);
 const files = [];
 const walk = (dir, prefix = '') => {
   for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (item.name === '.git') continue;
     if (item.isDirectory()) walk(path.join(dir, item.name), prefix + item.name + '/');
     else files.push(prefix + item.name);
   }
