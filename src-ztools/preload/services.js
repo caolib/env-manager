@@ -174,9 +174,123 @@ exit 1
   }
 }
 
+// ---------------------------------------------------------------------------
+// 批量提权：导入配置时一次性写入/删除多个系统环境变量，只弹一次 UAC
+// ---------------------------------------------------------------------------
+
+function toBase64(text) {
+  return Buffer.from(String(text == null ? '' : text), 'utf-8').toString('base64')
+}
+
+/**
+ * 生成临时 ps1 并通过 UAC 提权执行
+ */
+function runElevatedPowerShell(psScript, failMessage) {
+  const ps1File = path.join(
+    os.tmpdir(),
+    '_ztools_env_uac_' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.ps1'
+  )
+  fs.writeFileSync(ps1File, psScript, { encoding: 'utf-8' })
+
+  const runPsCmd = `
+$ErrorActionPreference = 'Stop'
+try {
+  $proc = Start-Process powershell.exe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '${ps1File.replace(/'/g, "''")}' -Verb RunAs -Wait -WindowStyle Hidden -PassThru
+  if ($null -ne $proc) {
+    exit $proc.ExitCode
+  }
+} catch {
+  exit 1223
+}
+exit 1
+`
+
+  try {
+    execFileSync(getPowerShellPath(), ['-NoProfile', '-NonInteractive', '-Command', runPsCmd], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      maxBuffer: 1024 * 1024 * 50,
+      timeout: 300000
+    })
+  } catch (error) {
+    if (error.status === 1223 || (error.stderr && (error.stderr.includes('Canceled') || error.stderr.includes('被用户取消')))) {
+      throw new Error('Canceled by user')
+    }
+    throw new Error(failMessage + '，退出码: ' + error.status)
+  } finally {
+    try { fs.unlinkSync(ps1File) } catch (_) { /* 忽略 */ }
+  }
+}
+
+/**
+ * 通过一次 UAC 提权批量写入系统环境变量
+ * @param {{name: string, value: string}[]} entries
+ */
+function regBatchAddElevated(entries) {
+  const items = entries.map(function (item) {
+    return "  @{ n = '" + toBase64(item.name) + "'; v = '" + toBase64(item.value) + "' }"
+  }).join(",\n")
+
+  const psScript = `
+$ErrorActionPreference = 'Stop'
+try {
+  $keyPath = 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
+  $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($keyPath, $true)
+  if ($null -eq $key) { exit 1 }
+  $entries = @(
+${items}
+  )
+  foreach ($e in $entries) {
+    $name = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($e.n))
+    $value = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($e.v))
+    $key.SetValue($name, $value, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+  }
+  $key.Close()
+  exit 0
+} catch {
+  exit 1
+}
+`
+
+  runElevatedPowerShell(psScript, '提权执行修改失败')
+}
+
+/**
+ * 通过一次 UAC 提权批量删除系统环境变量
+ * @param {string[]} names
+ */
+function regBatchDeleteElevated(names) {
+  const items = names.map(function (name) {
+    return "  @{ n = '" + toBase64(name) + "' }"
+  }).join(",\n")
+
+  const psScript = `
+$ErrorActionPreference = 'Stop'
+try {
+  $keyPath = 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
+  $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($keyPath, $true)
+  if ($null -eq $key) { exit 1 }
+  $entries = @(
+${items}
+  )
+  foreach ($e in $entries) {
+    $name = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($e.n))
+    if ($null -ne $key.GetValue($name)) {
+      $key.DeleteValue($name)
+    }
+  }
+  $key.Close()
+  exit 0
+} catch {
+  exit 1
+}
+`
+
+  runElevatedPowerShell(psScript, '提权执行删除失败')
+}
+
 // 缓存管理员权限检查结果（在整个 preload 生命周期内）
 let _isAdminCached = null
-
 function isCurrentProcessAdmin() {
   if (_isAdminCached !== null) return _isAdminCached
   try {
@@ -376,7 +490,7 @@ window.services = {
 
   // 文本写入到下载目录
   writeTextFile: function (text) {
-    const filePath = path.join(window.utools.getPath('downloads'), Date.now().toString() + '.txt')
+    const filePath = path.join(window.ztools.getPath('downloads'), Date.now().toString() + '.txt')
     fs.writeFileSync(filePath, text, { encoding: 'utf-8' })
     return filePath
   },
@@ -385,7 +499,7 @@ window.services = {
   writeImageFile: function (base64Url) {
     const matchs = /^data:image\/([a-z]{1,20});base64,/i.exec(base64Url)
     if (!matchs) return
-    const filePath = path.join(window.utools.getPath('downloads'), Date.now().toString() + '.' + matchs[1])
+    const filePath = path.join(window.ztools.getPath('downloads'), Date.now().toString() + '.' + matchs[1])
     fs.writeFileSync(filePath, base64Url.substring(matchs[0].length), { encoding: 'base64' })
     return filePath
   },
@@ -499,7 +613,73 @@ window.services = {
     }
   },
 
+  /**
+   * 批量设置环境变量
+   * 系统变量在无管理员权限时通过一次 UAC 提权完成，不会因为无权限而跳过
+   */
+  setEnvVarsBatch: function (vars, isSystem) {
+    if (!Array.isArray(vars) || vars.length === 0) return { success: true, updated: 0 }
+    if (isSystem === undefined) isSystem = false
 
+    const scope = isSystem
+      ? 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
+      : 'HKCU\\Environment'
+
+    try {
+      if (isSystem && !isCurrentProcessAdmin()) {
+        regBatchAddElevated(vars)
+      } else {
+        vars.forEach(function (item) {
+          regAdd(scope, item.name, item.value)
+        })
+      }
+      return { success: true, updated: vars.length }
+    } catch (error) {
+      console.error('批量设置环境变量失败:', error)
+      const errorMsg = error.message || error.toString()
+      if (errorMsg.includes('Canceled by user') || errorMsg.includes('被用户取消')) {
+        throw new Error('操作已取消：用户拒绝了 UAC 授权')
+      }
+      if (errorMsg.includes('Access is denied') || errorMsg.includes('拒绝访问') || errorMsg.indexOf('拒绝') !== -1 || errorMsg.includes('denied')) {
+        throw new Error('权限不足：提权失败或被拒绝')
+      }
+      throw new Error('批量设置环境变量失败: ' + errorMsg)
+    }
+  },
+
+  /**
+   * 批量删除环境变量
+   * 系统变量在无管理员权限时通过一次 UAC 提权完成
+   */
+  deleteEnvVarsBatch: function (names, isSystem) {
+    if (!Array.isArray(names) || names.length === 0) return { success: true, deleted: 0 }
+    if (isSystem === undefined) isSystem = false
+
+    const scope = isSystem
+      ? 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
+      : 'HKCU\\Environment'
+
+    try {
+      if (isSystem && !isCurrentProcessAdmin()) {
+        regBatchDeleteElevated(names)
+      } else {
+        names.forEach(function (name) {
+          regDelete(scope, name)
+        })
+      }
+      return { success: true, deleted: names.length }
+    } catch (error) {
+      console.error('批量删除环境变量失败:', error)
+      const errorMsg = error.message || error.toString()
+      if (errorMsg.includes('Canceled by user') || errorMsg.includes('被用户取消')) {
+        throw new Error('操作已取消：用户拒绝了 UAC 授权')
+      }
+      if (errorMsg.includes('Access is denied') || errorMsg.includes('拒绝访问') || errorMsg.indexOf('拒绝') !== -1 || errorMsg.includes('denied')) {
+        throw new Error('权限不足：提权失败或被拒绝')
+      }
+      throw new Error('批量删除环境变量失败: ' + errorMsg)
+    }
+  },
 
   /**
    * 检查是否有管理员权限
@@ -525,7 +705,7 @@ window.services = {
    */
   exportEnvVarsWithDefaultPath: function (data, fileName) {
     try {
-      const exportPath = window.utools.getPath('documents')
+      const exportPath = window.ztools.getPath('documents')
       const filePath = path.join(exportPath, fileName)
       fs.writeFileSync(filePath, JSON.stringify(data, null, 2), { encoding: 'utf-8' })
       return { success: true, path: filePath }
@@ -603,9 +783,9 @@ window.services = {
         return { success: true, path: filePath, removedFiles: removedFiles }
       }
 
-      const savePath = window.utools.showSaveDialog({
+      const savePath = window.ztools.showSaveDialog({
         title: '保存配置文件',
-        defaultPath: path.join(window.utools.getPath('documents'), defaultFileName),
+        defaultPath: path.join(window.ztools.getPath('documents'), defaultFileName),
         buttonLabel: '保存',
         filters: [
           { name: 'JSON文件', extensions: ['json'] },
@@ -782,9 +962,9 @@ window.services = {
    */
   selectExportFolder: function (defaultPath) {
     try {
-      const openPath = window.utools.showOpenDialog({
+      const openPath = window.ztools.showOpenDialog({
         title: '选择默认导出文件夹',
-        defaultPath: defaultPath || window.utools.getPath('documents'),
+        defaultPath: defaultPath || window.ztools.getPath('documents'),
         buttonLabel: '选择',
         properties: ['openDirectory', 'createDirectory']
       })
@@ -803,9 +983,9 @@ window.services = {
    */
   importConfig: function () {
     try {
-      const openPath = window.utools.showOpenDialog({
+      const openPath = window.ztools.showOpenDialog({
         title: '选择配置文件',
-        defaultPath: window.utools.getPath('documents'),
+        defaultPath: window.ztools.getPath('documents'),
         buttonLabel: '导入',
         filters: [
           { name: 'JSON文件', extensions: ['json'] },
@@ -902,7 +1082,7 @@ window.services = {
       if (!fs.existsSync(cleanPath)) {
         throw new Error('路径不存在')
       }
-      window.utools.shellOpenPath(cleanPath)
+      window.ztools.shellOpenPath(cleanPath)
       return { success: true }
     } catch (error) {
       throw new Error('打开失败: ' + error.message)
@@ -921,7 +1101,7 @@ window.services = {
       if (!fs.existsSync(cleanPath)) {
         throw new Error('路径不存在')
       }
-      window.utools.shellShowItemInFolder(cleanPath)
+      window.ztools.shellShowItemInFolder(cleanPath)
       return { success: true }
     } catch (error) {
       throw new Error('打开失败: ' + error.message)
@@ -950,8 +1130,8 @@ window.services = {
       if (!this.isURL(url)) {
         throw new Error('无效的 URL')
       }
-      // 使用 uTools 原生 API，在开发和打包环境中都能工作
-      window.utools.shellOpenExternal(url.trim())
+      // 使用 ZTools 原生 API，在开发和打包环境中都能工作
+      window.ztools.shellOpenExternal(url.trim())
       return { success: true }
     } catch (error) {
       throw new Error('打开链接失败: ' + error.message)

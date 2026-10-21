@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Windows environment variable manager plugin for uTools. Provides a graphical interface to view, add, edit, and delete system and user environment variables with features like search/filtering, Path variable line-by-line editing, admin privilege detection, and import/export functionality.
+A Windows environment variable manager plugin for ZTools. Provides a graphical interface to view, add, edit, and delete system and user environment variables with features like search/filtering, Path variable line-by-line editing, admin privilege detection, and import/export functionality.
 
 ## Common Development Commands
 
@@ -21,13 +21,13 @@ pnpm build
 
 ## Architecture Overview
 
-### uTools Integration Architecture
+### ZTools Integration Architecture
 
-This is a uTools plugin with a special two-process architecture:
+This is a ZTools plugin with a special two-process architecture:
 
 1. **Renderer Process (Vue 3 Frontend)**
-   - All Vue components run in the uTools sandbox
-   - Access to uTools API via `window.utools`
+   - All Vue components run in the ZTools sandbox
+   - Access to ZTools API via `window.ztools`
    - Cannot directly access Node.js or system APIs
    - Files: `src/App.vue`, `src/components/`, `src/stores/`
 
@@ -35,7 +35,7 @@ This is a uTools plugin with a special two-process architecture:
    - Runs with system access via Node.js
    - Injected into renderer process as `window.services`
    - Handles registry operations, file I/O, and system commands
-   - File: `public/preload/services.js`
+   - File: `src-ztools/preload/services.js`
 
 **Critical Requirement:** The preload script (`window.services`) is the ONLY way to access system-level operations. Vue components must call `window.services.*` methods to interact with environment variables and the Windows registry.
 
@@ -49,7 +49,7 @@ This is a uTools plugin with a special two-process architecture:
 
 ### Plugin Configuration
 
-Entry point: `public/plugin.json`
+Entry point: `src-ztools/plugin.json`
 - Main file: `index.html` (served by Vite in dev mode)
 - Preload script: `preload/services.js`
 - Keywords: `环境变量`, `环境变量管理`, `env`, `environment`
@@ -65,20 +65,21 @@ src/
 │   ├── EnvVarCard.vue               # Reusable card component for each env var
 │   └── ConfigView.vue               # Settings page (theme, export defaults)
 ├── stores/
-│   └── settings.js                  # Pinia store for user settings (uses uTools dbStorage)
+│   └── settings.js                  # Pinia store for user settings (uses ZTools dbStorage)
 └── utils/
-    └── store.js                     # uTools dbStorage wrapper (getData/setData/removeData)
+    └── store.js                     # ZTools dbStorage wrapper (getData/setData/removeData)
 
-public/
-├── plugin.json                      # uTools plugin configuration
+src-ztools/                         # ZTools plugin directory (load/package this one)
+├── plugin.json                      # main: "dist/index.html"
+├── logo.png
 ├── preload/
 │   └── services.js                  # Node.js preload script with registry/file APIs
-└── index.html                       # HTML entry point
+└── dist/                            # Vite build output (git ignored)
 ```
 
 ## Key Implementation Details
 
-### Environment Variable Operations (public/preload/services.js)
+### Environment Variable Operations (src-ztools/preload/services.js)
 
 All registry operations use Windows `reg` command through `execSync`:
 
@@ -91,7 +92,7 @@ All registry operations use Windows `reg` command through `execSync`:
 ### State Management (src/stores/settings.js)
 
 - Uses Vue 3 Composition API with computed properties (not Pinia stores)
-- Wraps uTools `dbStorage` API via `src/utils/store.js`
+- Wraps ZTools `dbStorage` API via `src/utils/store.js`
 - Settings automatically persist on change via deep watchers
 - Current settings: theme (`system`/`light`/`dark`)
 
@@ -106,7 +107,7 @@ All registry operations use Windows `reg` command through `execSync`:
 
 ### Adding a New Environment Variable Operation
 
-1. Add method to `window.services` in `public/preload/services.js`
+1. Add method to `window.services` in `src-ztools/preload/services.js`
 2. Use `execSync` to run registry commands (Windows `reg` command)
 3. Parse output or handle errors (check for permission errors: "Access is denied" / "拒绝访问")
 4. Call from Vue component via `window.services.methodName()`
@@ -136,9 +137,9 @@ The plugin detects admin status via `window.services.checkAdminPrivileges()`:
 ## Build Output
 
 `pnpm build` generates:
-- `dist/index.html` - Bundled Vue app
-- `dist/` - All assets ready to be packaged as uTools plugin
-- Install in uTools by adding the plugin directory via uTools UI
+- `src-ztools/dist/index.html` - Bundled Vue app
+- `src-ztools/dist/` - All assets ready to be packaged as ZTools plugin
+- Install in ZTools by loading the plugin directory `src-ztools`
 
 ## Important Notes
 

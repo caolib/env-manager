@@ -1,6 +1,6 @@
-# Windows 环境变量管理器 - uTools 插件
+# Windows 环境变量管理器 - ZTools 插件
 
-一个方便的 Windows 环境变量管理 uTools 插件，提供图形化界面来管理系统和用户环境变量。
+一个方便的 Windows 环境变量管理 ZTools 插件，提供图形化界面来管理系统和用户环境变量。
 
 ## 功能特性
 
@@ -20,7 +20,7 @@
 ### 配置选项
 - 📁 **默认导出路径**：可设置环境变量备份的默认导出位置
 - 🚀 **自动打开文件夹**：导出后可自动在资源管理器中显示文件
-- 💾 **配置持久化**：所有设置自动保存到 uTools 数据库
+- 💾 **配置持久化**：所有设置自动保存到 ZTools 数据库
 
 ## 快速开始
 
@@ -42,7 +42,7 @@ pnpm build
 ```
 
 ### 使用
-1. 在 uTools 中安装插件
+1. 构建后在 ZTools 中加载插件目录 `src-ztools`
 2. 输入关键词：`环境变量`、`env`、`environment` 等
 3. 开始管理你的环境变量！
 
@@ -79,17 +79,19 @@ pnpm build
 - **框架**：Vue 3 + Composition API
 - **UI 层**：项目内本地 Vue 组件（不依赖外部组件库）
 - **构建工具**：Vite
-- **运行环境**：uTools + Node.js preload
-- **状态管理**：Pinia（使用 uTools dbStorage）
+- **运行环境**：ZTools + Node.js preload
+- **状态管理**：Pinia（使用 ZTools dbStorage）
 
 ## 项目结构
 
 ```
 env-manager/
-├── public/
-│   ├── plugin.json          # uTools 插件配置
-│   └── preload/
-│       └── services.js      # Node.js 预加载脚本（环境变量操作）
+├── src-ztools/              # ZTools 插件目录（开发/打包都指向这里）
+│   ├── plugin.json          # ZTools 插件配置
+│   ├── logo.png
+│   ├── preload/
+│   │   └── services.js      # Node.js 预加载脚本（环境变量操作）
+│   └── dist/                # 构建产物
 ├── src/
 │   ├── components/
 │   │   ├── EnvVarCard.vue   # 环境变量卡片组件
@@ -98,7 +100,7 @@ env-manager/
 │   ├── stores/
 │   │   └── settings.js      # 设置状态管理
 │   ├── utils/
-│   │   └── store.js         # uTools dbStorage 封装
+│   │   └── store.js         # ZTools dbStorage 封装
 │   ├── App.vue              # 根组件
 │   └── main.js              # 入口文件
 └── README.md

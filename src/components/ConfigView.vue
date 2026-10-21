@@ -191,7 +191,6 @@ const processImport = async (config) => {
 
         let imported = 0;
         let failed = 0;
-        let skipped = 0;
         let importedAltsCount = 0;
         let importedGroupsCount = 0;
 
@@ -254,21 +253,21 @@ const processImport = async (config) => {
             const pureDisabledData = JSON.parse(JSON.stringify(safeDisabled));
             setData(DISABLED_VARS_KEY, pureDisabledData);
 
-            // 确保禁用变量从注册表中删除
-            for (const [name] of Object.entries(safeDisabled.system)) {
-                if (isAdmin.value) {
-                    try {
-                        await window.services.deleteEnvVar(name, true);
-                    } catch {
-                        // 忽略删除失败（可能已不存在）
-                    }
+            // 确保禁用变量从注册表中删除（系统变量一次 UAC 提权批量删除）
+            const systemDisabledNames = Object.keys(safeDisabled.system);
+            if (systemDisabledNames.length > 0) {
+                try {
+                    await window.services.deleteEnvVarsBatch(systemDisabledNames, true);
+                } catch (error) {
+                    console.error('删除系统禁用变量失败:', error);
                 }
             }
-            for (const [name] of Object.entries(safeDisabled.user)) {
+            const userDisabledNames = Object.keys(safeDisabled.user);
+            if (userDisabledNames.length > 0) {
                 try {
-                    await window.services.deleteEnvVar(name, false);
-                } catch {
-                    // 忽略删除失败（可能已不存在）
+                    await window.services.deleteEnvVarsBatch(userDisabledNames, false);
+                } catch (error) {
+                    console.error('删除用户禁用变量失败:', error);
                 }
             }
         }
@@ -283,38 +282,33 @@ const processImport = async (config) => {
         if (config.env_vars) {
             const envVars = config.env_vars;
 
-            const systemVarCount = Array.isArray(envVars.system_vars) ? envVars.system_vars.length : 0;
-            if (!isAdmin.value && systemVarCount > 0) {
-                message.warning('当前无管理员权限：系统环境变量修改将会失败，已跳过系统变量导入');
-            }
-
-            // 导入系统变量
-            if (envVars.system_vars) {
-                if (isAdmin.value) {
-                    for (const v of envVars.system_vars) {
-                        try {
-                            await window.services.setEnvVar(v.name, v.value, true);
-                            imported++;
-                        } catch (error) {
-                            console.error(`导入系统变量 ${v.name} 失败:`, error);
-                            failed++;
-                        }
-                    }
-                } else {
-                    skipped += Array.isArray(envVars.system_vars) ? envVars.system_vars.length : 0;
+            // 系统变量：无管理员权限时由 preload 通过一次 UAC 提权写入
+            const systemVars = Array.isArray(envVars.system_vars) ? envVars.system_vars : [];
+            if (systemVars.length > 0) {
+                try {
+                    await window.services.setEnvVarsBatch(
+                        systemVars.map(v => ({ name: v.name, value: v.value })),
+                        true
+                    );
+                    imported += systemVars.length;
+                } catch (error) {
+                    console.error('导入系统变量失败:', error);
+                    failed += systemVars.length;
                 }
             }
 
             // 导入用户变量
-            if (envVars.user_vars) {
-                for (const v of envVars.user_vars) {
-                    try {
-                        await window.services.setEnvVar(v.name, v.value, false);
-                        imported++;
-                    } catch (error) {
-                        console.error(`导入用户变量 ${v.name} 失败:`, error);
-                        failed++;
-                    }
+            const userVars = Array.isArray(envVars.user_vars) ? envVars.user_vars : [];
+            if (userVars.length > 0) {
+                try {
+                    await window.services.setEnvVarsBatch(
+                        userVars.map(v => ({ name: v.name, value: v.value })),
+                        false
+                    );
+                    imported += userVars.length;
+                } catch (error) {
+                    console.error('导入用户变量失败:', error);
+                    failed += userVars.length;
                 }
             }
 
@@ -323,8 +317,8 @@ const processImport = async (config) => {
 
         // 构建导入结果消息
         const messages = [];
-        if (imported > 0 || failed > 0 || skipped > 0) {
-            messages.push(`环境变量: 成功 ${imported} 个${failed > 0 ? `，失败 ${failed} 个` : ''}${skipped > 0 ? `，跳过 ${skipped} 个(需管理员权限)` : ''}`);
+        if (imported > 0 || failed > 0) {
+            messages.push(`环境变量: 成功 ${imported} 个${failed > 0 ? `，失败 ${failed} 个` : ''}`);
         }
         if (importedAltsCount > 0) {
             messages.push(`备用值: ${importedAltsCount} 个`);
@@ -489,7 +483,6 @@ async function importEnvVarsIncrementally(envVars) {
         mergedPathVars: 0,
         mergedPathItems: 0,
         skippedExisting: 0,
-        skippedByPermission: 0,
         failed: 0
     };
 
@@ -498,29 +491,17 @@ async function importEnvVarsIncrementally(envVars) {
     const currentSystemMap = envVarMapByName(systemVars.value);
     const currentUserMap = envVarMapByName(userVars.value);
 
-    if (!isAdmin.value && importSystemVars.length > 0) {
-        message.warning('当前无管理员权限：系统环境变量增量导入将跳过');
-    }
-
+    // 先收集本作用域需要写入的变更，再一次性提交；
+    // 系统变量由 preload 在一次 UAC 提权中批量写入，不再因为无管理员权限而跳过。
     async function importScope(vars, currentMap, isSystem) {
+        const updates = [];
+
         for (const item of vars) {
             const key = item.name.toLowerCase();
             const currentItem = currentMap.get(key);
 
-            if (isSystem && !isAdmin.value) {
-                result.skippedByPermission++;
-                continue;
-            }
-
             if (!currentItem) {
-                try {
-                    await window.services.setEnvVar(item.name, item.value, isSystem);
-                    currentMap.set(key, item);
-                    result.added++;
-                } catch (error) {
-                    console.error(`增量导入环境变量 ${item.name} 失败:`, error);
-                    result.failed++;
-                }
+                updates.push({ key, name: item.name, value: item.value });
                 continue;
             }
 
@@ -535,15 +516,34 @@ async function importEnvVarsIncrementally(envVars) {
                 continue;
             }
 
-            try {
-                await window.services.setEnvVar(currentItem.name, mergedPath.value, isSystem);
-                currentMap.set(key, { ...currentItem, value: mergedPath.value });
-                result.mergedPathVars++;
-                result.mergedPathItems += mergedPath.addedCount;
-            } catch (error) {
-                console.error(`合并 Path 变量 ${currentItem.name} 失败:`, error);
-                result.failed++;
-            }
+            updates.push({
+                key,
+                name: currentItem.name,
+                value: mergedPath.value,
+                merged: true,
+                addedCount: mergedPath.addedCount
+            });
+        }
+
+        if (updates.length === 0) return;
+
+        try {
+            await window.services.setEnvVarsBatch(
+                updates.map(item => ({ name: item.name, value: item.value })),
+                isSystem
+            );
+            updates.forEach(item => {
+                currentMap.set(item.key, { name: item.name, value: item.value });
+                if (item.merged) {
+                    result.mergedPathVars++;
+                    result.mergedPathItems += item.addedCount;
+                } else {
+                    result.added++;
+                }
+            });
+        } catch (error) {
+            console.error('增量导入环境变量失败:', error);
+            result.failed += updates.length;
         }
     }
 
@@ -593,12 +593,21 @@ const processIncrementalImport = async (config) => {
                 setData(DISABLED_VARS_KEY, cloneData(merged, { system: {}, user: {} }));
                 importedDisabledCount = addedEntries.length;
 
+                const systemDisabledToDelete = [];
+                const userDisabledToDelete = [];
                 for (const item of addedEntries) {
-                    if (item.scope === 'system' && !isAdmin.value) continue;
+                    if (item.scope === 'system') {
+                        systemDisabledToDelete.push(item.name);
+                    } else {
+                        userDisabledToDelete.push(item.name);
+                    }
+                }
 
+                for (const [names, isSystem] of [[systemDisabledToDelete, true], [userDisabledToDelete, false]]) {
+                    if (names.length === 0) continue;
                     try {
-                        await window.services.deleteEnvVar(item.name, item.scope === 'system');
-                        deletedDisabledEnvCount++;
+                        await window.services.deleteEnvVarsBatch(names, isSystem);
+                        deletedDisabledEnvCount += names.length;
                     } catch {
                         // 忽略删除失败（可能已不存在）
                     }
@@ -624,17 +633,16 @@ const processIncrementalImport = async (config) => {
 
         const envResult = config.env_vars
             ? await importEnvVarsIncrementally(config.env_vars)
-            : { added: 0, mergedPathVars: 0, mergedPathItems: 0, skippedExisting: 0, skippedByPermission: 0, failed: 0 };
+            : { added: 0, mergedPathVars: 0, mergedPathItems: 0, skippedExisting: 0, failed: 0 };
 
         await loadEnvVars();
 
         const messages = [];
-        if (envResult.added > 0 || envResult.mergedPathVars > 0 || envResult.failed > 0 || envResult.skippedByPermission > 0) {
+        if (envResult.added > 0 || envResult.mergedPathVars > 0 || envResult.failed > 0) {
             messages.push(
                 `环境变量: 新增 ${envResult.added} 个`
                 + `${envResult.mergedPathVars > 0 ? `，合并 Path ${envResult.mergedPathVars} 个(${envResult.mergedPathItems} 项)` : ''}`
                 + `${envResult.failed > 0 ? `，失败 ${envResult.failed} 个` : ''}`
-                + `${envResult.skippedByPermission > 0 ? `，跳过系统变量 ${envResult.skippedByPermission} 个(需管理员权限)` : ''}`
             );
         }
         if (importedSettingsCount > 0) messages.push(`应用设置: ${importedSettingsCount} 项`);

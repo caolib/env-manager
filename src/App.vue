@@ -137,13 +137,13 @@ onMounted(() => {
   };
   darkModeMediaQuery.addEventListener('change', handleThemeChange);
 
-  window.utools.onPluginEnter((action) => {
+  window.ztools.onPluginEnter((action) => {
     // 模板: 将进入动作传递给主页，供自定义逻辑使用
     enterAction.value = action;
     checkBackupSetupOnStartup();
   });
 
-  window.utools.onPluginOut(() => {
+  window.ztools.onPluginOut(() => {
     currentView.value = 'home';
   });
 });

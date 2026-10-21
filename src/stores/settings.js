@@ -57,7 +57,7 @@ watch(
 )
 
 /**
- * settings store - 使用 Composition API 和 uTools dbStorage
+ * settings store - 使用 Composition API 和 ZTools dbStorage
  */
 export function useSettingsStore() {
     const theme = computed({

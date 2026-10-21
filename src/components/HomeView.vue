@@ -1570,8 +1570,8 @@ async function checkAllPaths() {
 
 // 配置子输入框的函数
 function setupSubInput() {
-  if (window.utools && window.utools.setSubInput) {
-    window.utools.setSubInput(({ text }) => {
+  if (window.ztools && window.ztools.setSubInput) {
+    window.ztools.setSubInput(({ text }) => {
       searchKeyword.value = text;
       // 搜索时自动展开所有面板
       if (text) {
@@ -1656,7 +1656,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex: 1 1 520px;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
