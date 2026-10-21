@@ -78,9 +78,14 @@ function closeModal() {
 }
 
 .diff-page-header h3 {
+    flex: 1;
+    min-width: 0;
     margin: 0;
+    overflow: hidden;
     font-size: 16px;
     font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .diff-page-content {

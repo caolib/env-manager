@@ -1339,6 +1339,8 @@ div.config-view {
 }
 
 div.config-view.diff-mode {
+    /* 差异视图需要占满整宽，必须退出双列网格 */
+    display: block;
     max-width: none;
     height: calc(100vh - 64px);
     min-height: 0;
