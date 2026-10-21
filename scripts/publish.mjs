@@ -9,7 +9,7 @@
  *   node scripts/publish.mjs --dry-run  只准备副本并打印内容，不真正发布
  *   node scripts/publish.mjs --keep     保留临时副本目录便于排查
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -46,7 +46,7 @@ if (dirty) fail('工作区有未提交改动，请先提交：\n' + dirty);
 // 2. 构建产物
 if (SHOULD_BUILD) {
   console.log('▸ pnpm build');
-  execFileSync('pnpm', ['build'], { cwd: root, stdio: 'inherit', shell: true });
+  execSync('pnpm build', { cwd: root, stdio: 'inherit' });
   const changed = run('git', ['status', '--porcelain']);
   if (changed) fail('构建产物有变化，请先提交 web/ 后再发布：\n' + changed);
 }

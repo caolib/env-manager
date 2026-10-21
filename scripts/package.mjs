@@ -4,7 +4,7 @@
  * 用法：node scripts/package.mjs [--out <dir>]
  * 产物：<out>/env-manager-<version>.zip
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,6 +16,10 @@ const KEEP_ENTRIES = ['plugin.json', 'preload', 'logo.png', 'web', 'CHANGELOG.md
 const args = process.argv.slice(2);
 const outIndex = args.indexOf('--out');
 const outDir = path.resolve(root, outIndex >= 0 ? args[outIndex + 1] : 'release');
+
+// 先构建，避免把旧产物打进包
+console.log('▸ pnpm build');
+execSync('pnpm build', { cwd: root, stdio: 'inherit' });
 
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'plugin.json'), 'utf8'));
 if (!manifest.version) {
