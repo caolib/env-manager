@@ -60,6 +60,7 @@ README.md
 
 注意：
 
+- 打包完成后会自动打开产物所在文件夹（`--no-open` 可跳过）
 - 自定义输出目录：`node scripts/package.mjs --out <dir>`
 - `release/` 已加入 `.gitignore`，不会误提交
 - 不要直接压缩项目根目录：`node_modules` 有 140 MB，压出来约 24 MB，且会触发「缺少 plugin.json」（多了一层目录或打包内容不对）

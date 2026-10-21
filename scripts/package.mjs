@@ -4,7 +4,7 @@
  * 用法：node scripts/package.mjs [--out <dir>]
  * 产物：<out>/env-manager-<version>.zip
  */
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -66,3 +66,14 @@ fs.rmSync(tmp, { recursive: true, force: true });
 
 console.log(`\n✓ 生成: ${zipPath} (${size} KB)`);
 console.log('  内容: ' + files.join(', '));
+
+// 打开产物所在文件夹（--no-open 可跳过）
+if (!args.includes('--no-open')) {
+  const opener = process.platform === 'win32'
+    ? ['explorer', [outDir]]
+    : process.platform === 'darwin'
+      ? ['open', [outDir]]
+      : ['xdg-open', [outDir]];
+  spawn(opener[0], opener[1], { detached: true, stdio: 'ignore' }).unref();
+  console.log('  已打开: ' + outDir);
+}
