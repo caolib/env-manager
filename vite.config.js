@@ -22,8 +22,8 @@ export default defineConfig({
   ],
   base: './',
   build: {
-    // 构建产物直接输出到 ZTools 插件目录下
-    outDir: path.resolve(__dirname, 'src-ztools/dist'),
+    // 发布目录不能叫 dist（ztools publish 会忽略 dist 目录），故输出到 web/
+    outDir: path.resolve(__dirname, 'web'),
     emptyOutDir: true
   }
 })

@@ -15,7 +15,7 @@ pnpm install
 # Development server (hot reload on http://localhost:5173)
 pnpm dev
 
-# Production build (outputs to src-ztools/dist/)
+# Production build (outputs to web/)
 pnpm build
 ```
 
@@ -35,7 +35,7 @@ This is a ZTools plugin with a special two-process architecture:
    - Runs with system access via Node.js
    - Injected into renderer process as `window.services`
    - Handles registry operations, file I/O, and system commands
-   - File: `src-ztools/preload/services.js`
+   - File: `preload/services.js`
 
 **Critical Requirement:** The preload script (`window.services`) is the ONLY way to access system-level operations. Vue components must call `window.services.*` methods to interact with environment variables and the Windows registry.
 
@@ -49,8 +49,8 @@ This is a ZTools plugin with a special two-process architecture:
 
 ### Plugin Configuration
 
-Entry point: `src-ztools/plugin.json`
-- Main file: `index.html` (served by Vite in dev mode)
+Entry point: `plugin.json` (project root)
+- Main file: `web/index.html` (served by Vite in dev mode)
 - Preload script: `preload/services.js`
 - Keywords: `环境变量`, `环境变量管理`, `env`, `environment`
 
@@ -69,17 +69,16 @@ src/
 └── utils/
     └── store.js                     # ZTools dbStorage wrapper (getData/setData/removeData)
 
-src-ztools/                         # ZTools plugin directory (load/package this one)
-├── plugin.json                      # main: "dist/index.html"
-├── logo.png
-├── preload/
-│   └── services.js                  # Node.js preload script with registry/file APIs
-└── dist/                            # Vite build output (git ignored)
+plugin.json                          # ZTools plugin manifest (load/package the project root)
+logo.png
+preload/
+└── services.js                      # Node.js preload script with registry/file APIs
+web/                                 # Vite build output (committed; cannot be named "dist")
 ```
 
 ## Key Implementation Details
 
-### Environment Variable Operations (src-ztools/preload/services.js)
+### Environment Variable Operations (preload/services.js)
 
 All registry operations use Windows `reg` command through `execSync`:
 
@@ -107,7 +106,7 @@ All registry operations use Windows `reg` command through `execSync`:
 
 ### Adding a New Environment Variable Operation
 
-1. Add method to `window.services` in `src-ztools/preload/services.js`
+1. Add method to `window.services` in `preload/services.js`
 2. Use `execSync` to run registry commands (Windows `reg` command)
 3. Parse output or handle errors (check for permission errors: "Access is denied" / "拒绝访问")
 4. Call from Vue component via `window.services.methodName()`
@@ -137,9 +136,9 @@ The plugin detects admin status via `window.services.checkAdminPrivileges()`:
 ## Build Output
 
 `pnpm build` generates:
-- `src-ztools/dist/index.html` - Bundled Vue app
-- `src-ztools/dist/` - All assets ready to be packaged as ZTools plugin
-- Install in ZTools by loading the plugin directory `src-ztools`
+- `web/index.html` - Bundled Vue app
+- `web/assets/` - Bundled assets
+- Install in ZTools by loading the project root (where `plugin.json` lives)
 
 ## Important Notes
 

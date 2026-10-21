@@ -44,7 +44,7 @@ pnpm build
 ```
 
 ### 使用
-1. 构建后在 ZTools 中加载插件目录 `src-ztools`
+1. 构建后在 ZTools 中加载本项目根目录（`plugin.json` 所在位置）
 2. 输入关键词：`环境变量`、`env`、`environment` 等
 3. 开始管理你的环境变量！
 
@@ -88,12 +88,11 @@ pnpm build
 
 ```
 env-manager/
-├── src-ztools/              # ZTools 插件目录（开发/打包都指向这里）
-│   ├── plugin.json          # ZTools 插件配置
-│   ├── logo.png
-│   ├── preload/
-│   │   └── services.js      # Node.js 预加载脚本（环境变量操作）
-│   └── dist/                # 构建产物
+├── plugin.json              # ZTools 插件配置（插件入口）
+├── logo.png
+├── preload/
+│   └── services.js          # Node.js 预加载脚本（环境变量操作）
+├── web/                     # 构建产物（GUI 入口）
 ├── src/
 │   ├── components/
 │   │   ├── EnvVarCard.vue   # 环境变量卡片组件
